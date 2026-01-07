@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
             NoyaTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Greeting(
-                        name = "Yaxkem jeje",
+                        name = "Yaxkem jeje pokemon jejeje",
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
