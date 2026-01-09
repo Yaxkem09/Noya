@@ -59,12 +59,23 @@ import com.example.noya.ui.theme.NoyaTheme
 import java.text.SimpleDateFormat
 import java.util.*
 
+object IncomingCallState {
+    var incomingCallNumber = mutableStateOf<String?>(null)
+}
+
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val REQUEST_CODE_SET_DEFAULT_DIALER = 1001
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Solicitar ser la aplicación de teléfono predeterminada
         requestDefaultDialerRole()
+
+        // Verificar si hay una llamada entrante al crear
+        handleIncomingCallIntent(intent)
 
         setContent {
             NoyaTheme {
@@ -80,7 +91,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        setIntent(intent)
+        intent?.let {
+            setIntent(it)
+            handleIncomingCallIntent(it)
+        }
+    }
+
+    private fun handleIncomingCallIntent(intent: Intent?) {
+        intent?.let {
+            if (it.getBooleanExtra("INCOMING_CALL", false)) {
+                val callerNumber = it.getStringExtra("CALLER_NUMBER") ?: "Desconocido"
+                Log.d("MainActivity", "Llamada entrante detectada: $callerNumber")
+                IncomingCallState.incomingCallNumber.value = callerNumber
+                // Limpiar el intent
+                it.removeExtra("INCOMING_CALL")
+                it.removeExtra("CALLER_NUMBER")
+            }
+        }
     }
 
     private fun requestDefaultDialerRole() {
@@ -102,10 +129,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    companion object {
-        private const val REQUEST_CODE_SET_DEFAULT_DIALER = 1001
-    }
 }
 
 data class Contact(
@@ -117,22 +140,15 @@ data class Contact(
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
-    val activity = context as? MainActivity
     var currentScreen by remember { mutableStateOf("home") }
     var activeCallContact by remember { mutableStateOf<Contact?>(null) }
-    var incomingCallerNumber by remember { mutableStateOf<String?>(null) }
+    val incomingCallerNumber by IncomingCallState.incomingCallNumber
 
-    // Verificar si hay una llamada entrante
-    LaunchedEffect(Unit) {
-        activity?.intent?.let { intent ->
-            if (intent.getBooleanExtra("INCOMING_CALL", false)) {
-                val callerNumber = intent.getStringExtra("CALLER_NUMBER") ?: "Desconocido"
-                incomingCallerNumber = callerNumber
-                currentScreen = "incomingCall"
-                // Limpiar el intent
-                intent.removeExtra("INCOMING_CALL")
-                intent.removeExtra("CALLER_NUMBER")
-            }
+    // Observar cambios en el número de llamada entrante
+    LaunchedEffect(incomingCallerNumber) {
+        if (incomingCallerNumber != null) {
+            Log.d("MainScreen", "Mostrando pantalla de llamada entrante para: $incomingCallerNumber")
+            currentScreen = "incomingCall"
         }
     }
 
@@ -157,10 +173,12 @@ fun MainScreen() {
                 CallManager.answerCall()
                 val contact = Contact("incoming", incomingCallerNumber ?: "Desconocido", incomingCallerNumber ?: "")
                 activeCallContact = contact
+                IncomingCallState.incomingCallNumber.value = null
                 currentScreen = "activeCall"
             },
             onReject = {
                 CallManager.rejectCall()
+                IncomingCallState.incomingCallNumber.value = null
                 currentScreen = "home"
             }
         )
@@ -250,7 +268,7 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
 
             // Botón Mensajes (WhatsApp)
             LargeAccessibleButton(
-                text = "Mensajes Internet222",
+                text = "Mensajes Internet44",
                 icon = Icons.AutoMirrored.Filled.Chat,
                 onClick = {
                     openWhatsApp(context)
