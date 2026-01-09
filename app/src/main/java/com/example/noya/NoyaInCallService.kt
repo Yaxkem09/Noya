@@ -40,7 +40,9 @@ class NoyaInCallService : InCallService() {
                 CallManager.setCallState(state)
 
                 if (state == Call.STATE_DISCONNECTED) {
+                    Log.d("NoyaInCallService", "Llamada desconectada")
                     CallManager.ongoingCall = null
+                    IncomingCallState.callEnded.value = true
                 }
             }
         })
@@ -51,6 +53,7 @@ class NoyaInCallService : InCallService() {
         Log.d("NoyaInCallService", "Llamada removida")
         CallManager.ongoingCall = null
         CallManager.setCallState(Call.STATE_DISCONNECTED)
+        IncomingCallState.callEnded.value = true
     }
 }
 

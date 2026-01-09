@@ -61,6 +61,7 @@ import java.util.*
 
 object IncomingCallState {
     var incomingCallNumber = mutableStateOf<String?>(null)
+    var callEnded = mutableStateOf(false)
 }
 
 class MainActivity : ComponentActivity() {
@@ -143,12 +144,23 @@ fun MainScreen() {
     var currentScreen by remember { mutableStateOf("home") }
     var activeCallContact by remember { mutableStateOf<Contact?>(null) }
     val incomingCallerNumber by IncomingCallState.incomingCallNumber
+    val callEnded by IncomingCallState.callEnded
 
     // Observar cambios en el número de llamada entrante
     LaunchedEffect(incomingCallerNumber) {
         if (incomingCallerNumber != null) {
             Log.d("MainScreen", "Mostrando pantalla de llamada entrante para: $incomingCallerNumber")
             currentScreen = "incomingCall"
+        }
+    }
+
+    // Observar cuando la llamada termina
+    LaunchedEffect(callEnded) {
+        if (callEnded) {
+            Log.d("MainScreen", "Llamada terminada, regresando a home")
+            currentScreen = "home"
+            activeCallContact = null
+            IncomingCallState.callEnded.value = false
         }
     }
 
@@ -268,7 +280,7 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
 
             // Botón Mensajes (WhatsApp)
             LargeAccessibleButton(
-                text = "Mensajes Internet44",
+                text = "Mensajes Internet1",
                 icon = Icons.AutoMirrored.Filled.Chat,
                 onClick = {
                     openWhatsApp(context)
