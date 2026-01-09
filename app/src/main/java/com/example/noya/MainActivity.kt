@@ -6,9 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Message
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -74,7 +74,7 @@ fun MainScreen() {
         // Botón Mensajes (WhatsApp)
         LargeAccessibleButton(
             text = "Mensajes (WhatsApp)",
-            icon = Icons.Filled.Message,
+            icon = Icons.AutoMirrored.Filled.Chat,
             onClick = {
                 Toast.makeText(context, "Función en desarrollo", Toast.LENGTH_SHORT).show()
             }
