@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.telecom.Call
 import android.telecom.TelecomManager
 import android.util.Log
 import android.widget.Toast
@@ -72,8 +73,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Solicitar ser la aplicación de teléfono predeterminada
-        requestDefaultDialerRole()
+        Log.d("MainActivity", "onCreate llamado")
 
         // Verificar si hay una llamada entrante al crear
         handleIncomingCallIntent(intent)
@@ -88,6 +88,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // Solicitar ser la aplicación de teléfono predeterminada DESPUÉS de setContent
+        requestDefaultDialerRole()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -115,18 +118,46 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             // Android 10 y superior - usar RoleManager
             val roleManager = getSystemService(RoleManager::class.java)
-            if (!roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
+            val isDefaultDialer = roleManager.isRoleHeld(RoleManager.ROLE_DIALER)
+            Log.d("MainActivity", "¿Es app de marcación predeterminada? $isDefaultDialer")
+
+            if (!isDefaultDialer) {
+                Log.d("MainActivity", "Solicitando permisos de marcación predeterminada")
                 val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
                 startActivityForResult(intent, REQUEST_CODE_SET_DEFAULT_DIALER)
+            } else {
+                Log.d("MainActivity", "Ya somos la app de marcación predeterminada")
             }
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             // Android 6 a Android 9 - usar TelecomManager
             val telecomManager = getSystemService(TelecomManager::class.java)
-            if (telecomManager.defaultDialerPackage != packageName) {
+            val isDefaultDialer = telecomManager.defaultDialerPackage == packageName
+            Log.d("MainActivity", "¿Es app de marcación predeterminada? $isDefaultDialer")
+
+            if (!isDefaultDialer) {
+                Log.d("MainActivity", "Solicitando permisos de marcación predeterminada")
                 val intent = Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).apply {
                     putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName)
                 }
                 startActivity(intent)
+            } else {
+                Log.d("MainActivity", "Ya somos la app de marcación predeterminada")
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_CODE_SET_DEFAULT_DIALER) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val roleManager = getSystemService(RoleManager::class.java)
+                if (roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
+                    Log.d("MainActivity", "Usuario aceptó ser app predeterminada")
+                    Toast.makeText(this, "Noya configurada como app de teléfono", Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.d("MainActivity", "Usuario rechazó ser app predeterminada")
+                    Toast.makeText(this, "Noya necesita ser la app de teléfono predeterminada para funcionar", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -258,7 +289,7 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
         ) {
             // Botón Llamadas
             LargeAccessibleButton(
-                text = "Llamar",
+                text = "Llamar2",
                 icon = Icons.Filled.Call,
                 onClick = {
                     onNavigateToContacts()
@@ -273,17 +304,6 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
                 icon = Icons.Filled.Person,
                 onClick = {
                     onNavigateToNewContact()
-                }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Botón Mensajes (WhatsApp)
-            LargeAccessibleButton(
-                text = "Mensajes Internet1",
-                icon = Icons.AutoMirrored.Filled.Chat,
-                onClick = {
-                    openWhatsApp(context)
                 }
             )
 
@@ -568,21 +588,40 @@ fun openWhatsApp(context: Context) {
 fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     val context = LocalContext.current
     var isSpeakerOn by remember { mutableStateOf(false) }
+    var callState by remember { mutableStateOf<Int?>(null) }
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    // Iniciar la llamada cuando se muestra la pantalla
+    // Monitorear el estado de la llamada
     LaunchedEffect(Unit) {
-        makePhoneCall(context, contact.phoneNumber)
+        CallManager.setCallStateCallback { state ->
+            callState = state
+            Log.d("ActiveCallScreen", "Estado de llamada actualizado: $state")
 
-        // Mantener trayendo nuestra actividad al frente cada 300ms durante los primeros 3 segundos
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        repeat(10) { iteration ->
-            handler.postDelayed({
-                val bringToFrontIntent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                }
-                context.startActivity(bringToFrontIntent)
-            }, (iteration * 300).toLong())
+            // Si la llamada se desconectó, cerrar la pantalla
+            if (state == Call.STATE_DISCONNECTED) {
+                Log.d("ActiveCallScreen", "Llamada desconectada - cerrando pantalla")
+                audioManager.isSpeakerphoneOn = false
+                onEndCall()
+            }
+        }
+    }
+
+    // Iniciar la llamada cuando se muestra la pantalla (solo para llamadas salientes)
+    LaunchedEffect(contact.id) {
+        // Solo iniciar llamada si no hay una llamada en curso
+        if (CallManager.ongoingCall == null && contact.id != "incoming") {
+            makePhoneCall(context, contact.phoneNumber)
+
+            // Mantener trayendo nuestra actividad al frente cada 300ms durante los primeros 3 segundos
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            repeat(10) { iteration ->
+                handler.postDelayed({
+                    val bringToFrontIntent = Intent(context, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    }
+                    context.startActivity(bringToFrontIntent)
+                }, (iteration * 300).toLong())
+            }
         }
     }
 
