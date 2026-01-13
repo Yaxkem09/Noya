@@ -30,9 +30,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CallMissed
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
@@ -56,6 +58,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.example.noya.ui.theme.NoyaTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -169,6 +175,14 @@ data class Contact(
     val phoneNumber: String
 )
 
+data class CallLog(
+    val id: String,
+    val phoneNumber: String,
+    val name: String?,
+    val date: String,
+    val time: String
+)
+
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
@@ -198,7 +212,8 @@ fun MainScreen() {
     when (currentScreen) {
         "home" -> HomeScreen(
             onNavigateToContacts = { currentScreen = "contacts" },
-            onNavigateToNewContact = { currentScreen = "newContact" }
+            onNavigateToAdvancedOptions = { currentScreen = "advancedOptions" },
+            onNavigateToMissedCalls = { currentScreen = "missedCalls" }
         )
         "contacts" -> ContactsScreen(
             onNavigateBack = { currentScreen = "home" },
@@ -208,7 +223,18 @@ fun MainScreen() {
             }
         )
         "newContact" -> NewContactScreen(
-            onNavigateBack = { currentScreen = "home" }
+            onNavigateBack = { currentScreen = "advancedOptions" }
+        )
+        "advancedOptions" -> AdvancedOptionsScreen(
+            onNavigateBack = { currentScreen = "home" },
+            onNavigateToNewContact = { currentScreen = "newContact" }
+        )
+        "missedCalls" -> MissedCallsScreen(
+            onNavigateBack = { currentScreen = "home" },
+            onCallContact = { contact ->
+                activeCallContact = contact
+                currentScreen = "activeCall"
+            }
         )
         "incomingCall" -> IncomingCallScreen(
             callerNumber = incomingCallerNumber ?: "Desconocido",
@@ -235,11 +261,18 @@ fun MainScreen() {
 }
 
 @Composable
-fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> Unit) {
+fun HomeScreen(
+    onNavigateToContacts: () -> Unit,
+    onNavigateToAdvancedOptions: () -> Unit,
+    onNavigateToMissedCalls: () -> Unit
+) {
     val context = LocalContext.current
     var currentTime by remember { mutableStateOf(getCurrentTime()) }
     var currentDate by remember { mutableStateOf(getCurrentDate()) }
     var isSilentMode by remember { mutableStateOf(false) }
+    var pressProgress by remember { mutableStateOf(0f) }
+    var isPressing by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Actualizar la hora cada segundo
     LaunchedEffect(Unit) {
@@ -250,35 +283,61 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    // Manejar el progreso de la presión
+    LaunchedEffect(isPressing) {
+        if (isPressing) {
+            val startTime = System.currentTimeMillis()
+            while (isPressing) {
+                val elapsed = System.currentTimeMillis() - startTime
+                pressProgress = (elapsed / 3000f).coerceIn(0f, 1f)
+
+                if (pressProgress >= 1f) {
+                    // Activar opciones avanzadas
+                    isPressing = false
+                    pressProgress = 0f
+                    onNavigateToAdvancedOptions()
+                    break
+                }
+                kotlinx.coroutines.delay(16) // ~60fps
+            }
+        } else {
+            // Resetear el progreso cuando se suelta
+            pressProgress = 0f
+        }
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize()
     ) {
-        // Hora y Fecha en la parte superior
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp, bottom = 32.dp),
+                .fillMaxSize()
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = currentTime,
-                fontSize = 56.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF2C3E50), // Azul oscuro suave
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = currentDate,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Normal,
-                color = Color(0xFF5D6D7E), // Gris azulado
-                textAlign = TextAlign.Center
-            )
-        }
+            // Hora y Fecha en la parte superior
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 24.dp, bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = currentTime,
+                    fontSize = 56.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2C3E50), // Azul oscuro suave
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = currentDate,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFF5D6D7E), // Gris azulado
+                    textAlign = TextAlign.Center
+                )
+            }
 
         Spacer(modifier = Modifier.weight(1f))
 
@@ -289,7 +348,7 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
         ) {
             // Botón Llamadas
             LargeAccessibleButton(
-                text = "Llamar2",
+                text = "Llamar5",
                 icon = Icons.Filled.Call,
                 onClick = {
                     onNavigateToContacts()
@@ -298,13 +357,14 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Botón Contactos
+            // Botón Llamadas Perdidas
             LargeAccessibleButton(
-                text = "Nuevo Contacto",
-                icon = Icons.Filled.Person,
+                text = "Llamadas Perdidas",
+                icon = Icons.Filled.CallMissed,
                 onClick = {
-                    onNavigateToNewContact()
-                }
+                    onNavigateToMissedCalls()
+                },
+                backgroundColor = Color(0xFFE74C3C) // Rojo suave
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -322,7 +382,48 @@ fun HomeScreen(onNavigateToContacts: () -> Unit, onNavigateToNewContact: () -> U
             )
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        // Botón de opciones avanzadas en la esquina superior izquierda
+        Box(
+            modifier = Modifier
+                .padding(16.dp)
+                .size(60.dp)
+                .align(Alignment.TopStart)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressing = true
+                            tryAwaitRelease()
+                            isPressing = false
+                        }
+                    )
+                }
+        ) {
+            // Indicador de progreso circular
+            if (pressProgress > 0f) {
+                CircularProgressIndicator(
+                    progress = { pressProgress },
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color(0xFF58D68D),
+                    strokeWidth = 4.dp
+                )
+            }
+
+            // Botón
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Opciones Avanzadas",
+                    modifier = Modifier.size(32.dp),
+                    tint = Color(0xFF2C3E50)
+                )
+            }
+        }
     }
 }
 
@@ -495,7 +596,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
             ) {
                 Icon(
                     imageVector = Icons.Filled.Phone,
-                    contentDescription = "Llamar",
+                    contentDescription = "Llamar0",
                     modifier = Modifier.size(40.dp)
                 )
             }
@@ -590,18 +691,47 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     var isSpeakerOn by remember { mutableStateOf(false) }
     var callState by remember { mutableStateOf<Int?>(null) }
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    var hasEnded by remember { mutableStateOf(false) }
 
-    // Monitorear el estado de la llamada
+    // Monitorear el estado de la llamada con callback
     LaunchedEffect(Unit) {
         CallManager.setCallStateCallback { state ->
             callState = state
             Log.d("ActiveCallScreen", "Estado de llamada actualizado: $state")
 
             // Si la llamada se desconectó, cerrar la pantalla
-            if (state == Call.STATE_DISCONNECTED) {
+            if (state == Call.STATE_DISCONNECTED && !hasEnded) {
                 Log.d("ActiveCallScreen", "Llamada desconectada - cerrando pantalla")
+                hasEnded = true
                 audioManager.isSpeakerphoneOn = false
                 onEndCall()
+            }
+        }
+    }
+
+    // Verificar periódicamente si la llamada sigue activa
+    LaunchedEffect(Unit) {
+        while (!hasEnded) {
+            kotlinx.coroutines.delay(500) // Verificar cada medio segundo
+
+            val currentCall = CallManager.ongoingCall
+            if (currentCall == null && !hasEnded) {
+                Log.d("ActiveCallScreen", "Llamada ya no existe - cerrando pantalla")
+                hasEnded = true
+                audioManager.isSpeakerphoneOn = false
+                onEndCall()
+                return@LaunchedEffect
+            }
+
+            // Verificar el estado de la llamada directamente
+            currentCall?.let { call ->
+                if (call.state == Call.STATE_DISCONNECTED && !hasEnded) {
+                    Log.d("ActiveCallScreen", "Llamada desconectada (verificación periódica) - cerrando pantalla")
+                    hasEnded = true
+                    audioManager.isSpeakerphoneOn = false
+                    onEndCall()
+                    return@LaunchedEffect
+                }
             }
         }
     }
@@ -625,13 +755,17 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         }
     }
 
-    // Mantener la pantalla encendida
+    // Mantener la pantalla encendida y limpiar al salir
     DisposableEffect(Unit) {
         val activity = context as? ComponentActivity
         activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         onDispose {
+            Log.d("ActiveCallScreen", "Pantalla de llamada destruida - limpiando recursos")
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            audioManager.isSpeakerphoneOn = false
+            // Limpiar el callback para evitar memory leaks
+            CallManager.setCallStateCallback { }
         }
     }
 
@@ -1357,6 +1491,330 @@ fun LargeAccessibleButton(
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
+        }
+    }
+}
+
+fun getMissedCalls(context: Context): List<CallLog> {
+    val missedCalls = mutableListOf<CallLog>()
+
+    try {
+        val cursor = context.contentResolver.query(
+            android.provider.CallLog.Calls.CONTENT_URI,
+            null,
+            "${android.provider.CallLog.Calls.TYPE} = ?",
+            arrayOf(android.provider.CallLog.Calls.MISSED_TYPE.toString()),
+            "${android.provider.CallLog.Calls.DATE} DESC"
+        )
+
+        cursor?.use {
+            val numberIndex = it.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
+            val dateIndex = it.getColumnIndex(android.provider.CallLog.Calls.DATE)
+            val idIndex = it.getColumnIndex(android.provider.CallLog.Calls._ID)
+
+            while (it.moveToNext()) {
+                val id = it.getString(idIndex)
+                val number = it.getString(numberIndex) ?: "Desconocido"
+                val dateMillis = it.getLong(dateIndex)
+
+                val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(dateMillis))
+                val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(dateMillis))
+                val name = getContactNameFromNumber(context, number)
+
+                missedCalls.add(CallLog(id, number, name, date, time))
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("MissedCalls", "Error obteniendo llamadas perdidas: ${e.message}", e)
+    }
+
+    return missedCalls
+}
+
+@Composable
+fun MissedCallsScreen(
+    onNavigateBack: () -> Unit,
+    onCallContact: (Contact) -> Unit
+) {
+    val context = LocalContext.current
+    var missedCalls by remember { mutableStateOf<List<CallLog>>(emptyList()) }
+    var hasPermission by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val readCallLogGranted = permissions[Manifest.permission.READ_CALL_LOG] ?: false
+        val callPhoneGranted = permissions[Manifest.permission.CALL_PHONE] ?: false
+
+        if (readCallLogGranted && callPhoneGranted) {
+            hasPermission = true
+            missedCalls = getMissedCalls(context)
+        } else {
+            Toast.makeText(context, "Se necesitan permisos para ver llamadas perdidas", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val readGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_CALL_LOG
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val callGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CALL_PHONE
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (readGranted && callGranted) {
+            hasPermission = true
+            missedCalls = getMissedCalls(context)
+        } else {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.READ_CALL_LOG,
+                    Manifest.permission.CALL_PHONE
+                )
+            )
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        // Botón de regresar
+        Button(
+            onClick = onNavigateBack,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF85929E),
+                contentColor = Color.White
+            )
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Regresar",
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Regresar",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Título
+        Text(
+            text = "Llamadas Perdidas",
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF2C3E50),
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // Lista de llamadas perdidas
+        if (hasPermission) {
+            if (missedCalls.isEmpty()) {
+                Text(
+                    text = "No hay llamadas perdidas",
+                    fontSize = 24.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(missedCalls) { callLog ->
+                        MissedCallItem(
+                            callLog = callLog,
+                            onCallClick = {
+                                val contact = Contact(
+                                    callLog.id,
+                                    callLog.name ?: callLog.phoneNumber,
+                                    callLog.phoneNumber
+                                )
+                                onCallContact(contact)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MissedCallItem(callLog: CallLog, onCallClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 4.dp
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Información de la llamada
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = callLog.name ?: callLog.phoneNumber,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                if (callLog.name != null) {
+                    Text(
+                        text = callLog.phoneNumber,
+                        fontSize = 18.sp,
+                        color = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+                Text(
+                    text = "${callLog.date} - ${callLog.time}",
+                    fontSize = 16.sp,
+                    color = Color(0xFFE74C3C),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // Botón de llamar
+            Button(
+                onClick = onCallClick,
+                modifier = Modifier
+                    .size(80.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF58D68D),
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Phone,
+                    contentDescription = "Llamar",
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AdvancedOptionsScreen(
+    onNavigateBack: () -> Unit,
+    onNavigateToNewContact: () -> Unit
+) {
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        // Botón de regresar
+        Button(
+            onClick = onNavigateBack,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF85929E),
+                contentColor = Color.White
+            )
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Regresar",
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Regresar",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Título
+        Text(
+            text = "Opciones Avanzadas",
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF2C3E50),
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+
+        // Botón Nuevo Contacto
+        LargeAccessibleButton(
+            text = "Nuevo Contacto",
+            icon = Icons.Filled.Person,
+            onClick = onNavigateToNewContact,
+            backgroundColor = Color(0xFF58D68D) // Verde
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Contenido de opciones avanzadas (puedes agregar más opciones aquí)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 4.dp
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Text(
+                    text = "Panel de Configuración",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2C3E50)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Aquí puedes agregar configuraciones avanzadas de la aplicación.",
+                    fontSize = 18.sp,
+                    color = Color(0xFF5D6D7E)
+                )
+            }
         }
     }
 }
