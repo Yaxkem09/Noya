@@ -354,7 +354,7 @@ fun HomeScreen(
         ) {
             // Botón Llamadas
             LargeAccessibleButton(
-                text = "Llamar8",
+                text = "Llamar11",
                 icon = Icons.Filled.Call,
                 onClick = {
                     onNavigateToContacts()
@@ -394,7 +394,7 @@ fun HomeScreen(
         // Botón de opciones avanzadas en la esquina superior izquierda
         Box(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(top = 8.dp, start = 8.dp)
                 .size(60.dp)
                 .align(Alignment.TopStart)
                 .pointerInput(Unit) {
@@ -1530,7 +1530,7 @@ fun getContactNameFromNumber(context: Context, phoneNumber: String): String? {
 }
 
 fun getCurrentTime(): String {
-    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
     return sdf.format(Date())
 }
 
