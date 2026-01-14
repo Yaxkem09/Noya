@@ -5,10 +5,12 @@ import android.app.NotificationManager
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.media.AudioManager
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.ContactsContract
@@ -29,6 +31,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallMissed
 import androidx.compose.material.icons.filled.Person
@@ -269,16 +273,18 @@ fun HomeScreen(
     val context = LocalContext.current
     var currentTime by remember { mutableStateOf(getCurrentTime()) }
     var currentDate by remember { mutableStateOf(getCurrentDate()) }
+    var batteryLevel by remember { mutableStateOf(getBatteryLevel(context)) }
     var isSilentMode by remember { mutableStateOf(false) }
     var pressProgress by remember { mutableStateOf(0f) }
     var isPressing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Actualizar la hora cada segundo
+    // Actualizar la hora y batería cada segundo
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = getCurrentTime()
             currentDate = getCurrentDate()
+            batteryLevel = getBatteryLevel(context)
             kotlinx.coroutines.delay(1000)
         }
     }
@@ -348,7 +354,7 @@ fun HomeScreen(
         ) {
             // Botón Llamadas
             LargeAccessibleButton(
-                text = "Llamar5",
+                text = "Llamar8",
                 icon = Icons.Filled.Call,
                 onClick = {
                     onNavigateToContacts()
@@ -421,6 +427,35 @@ fun HomeScreen(
                     contentDescription = "Opciones Avanzadas",
                     modifier = Modifier.size(32.dp),
                     tint = Color(0xFF2C3E50)
+                )
+            }
+        }
+
+        // Indicador de batería en la esquina superior derecha
+        Box(
+            modifier = Modifier
+                .padding(16.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.BatteryChargingFull,
+                    contentDescription = "Batería",
+                    modifier = Modifier.size(28.dp),
+                    tint = when {
+                        batteryLevel > 50 -> Color(0xFF58D68D) // Verde
+                        batteryLevel > 20 -> Color(0xFFE67E22) // Naranja
+                        else -> Color(0xFFE74C3C) // Rojo
+                    }
+                )
+                Text(
+                    text = "$batteryLevel%",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2C3E50)
                 )
             }
         }
@@ -738,6 +773,14 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
 
     // Iniciar la llamada cuando se muestra la pantalla (solo para llamadas salientes)
     LaunchedEffect(contact.id) {
+        // Configurar el modo de audio al iniciar
+        try {
+            audioManager.mode = AudioManager.MODE_IN_CALL
+            Log.d("ActiveCallScreen", "Modo de audio configurado a IN_CALL")
+        } catch (e: Exception) {
+            Log.e("ActiveCallScreen", "Error al configurar modo de audio: ${e.message}", e)
+        }
+
         // Solo iniciar llamada si no hay una llamada en curso
         if (CallManager.ongoingCall == null && contact.id != "incoming") {
             makePhoneCall(context, contact.phoneNumber)
@@ -763,7 +806,16 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         onDispose {
             Log.d("ActiveCallScreen", "Pantalla de llamada destruida - limpiando recursos")
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            audioManager.isSpeakerphoneOn = false
+
+            // Limpiar configuración de audio
+            try {
+                audioManager.isSpeakerphoneOn = false
+                audioManager.mode = AudioManager.MODE_NORMAL
+                Log.d("ActiveCallScreen", "Audio restaurado a modo normal")
+            } catch (e: Exception) {
+                Log.e("ActiveCallScreen", "Error al restaurar audio: ${e.message}", e)
+            }
+
             // Limpiar el callback para evitar memory leaks
             CallManager.setCallStateCallback { }
         }
@@ -824,12 +876,29 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         Button(
             onClick = {
                 isSpeakerOn = !isSpeakerOn
-                audioManager.isSpeakerphoneOn = isSpeakerOn
-                Toast.makeText(
-                    context,
-                    if (isSpeakerOn) "Altavoz activado" else "Altavoz desactivado",
-                    Toast.LENGTH_SHORT
-                ).show()
+
+                try {
+                    if (isSpeakerOn) {
+                        // Activar altavoz
+                        audioManager.mode = AudioManager.MODE_IN_CALL
+                        audioManager.isSpeakerphoneOn = true
+                        Log.d("ActiveCallScreen", "Altavoz activado - Modo: ${audioManager.mode}, Speaker: ${audioManager.isSpeakerphoneOn}")
+                    } else {
+                        // Desactivar altavoz
+                        audioManager.isSpeakerphoneOn = false
+                        audioManager.mode = AudioManager.MODE_IN_CALL
+                        Log.d("ActiveCallScreen", "Altavoz desactivado - Modo: ${audioManager.mode}, Speaker: ${audioManager.isSpeakerphoneOn}")
+                    }
+
+                    Toast.makeText(
+                        context,
+                        if (isSpeakerOn) "Altavoz activado" else "Altavoz desactivado",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } catch (e: Exception) {
+                    Log.e("ActiveCallScreen", "Error al cambiar altavoz: ${e.message}", e)
+                    Toast.makeText(context, "Error al cambiar altavoz", Toast.LENGTH_SHORT).show()
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -904,10 +973,54 @@ fun IncomingCallScreen(
 ) {
     val context = LocalContext.current
     var callerName by remember { mutableStateOf<String?>(null) }
+    var hasEnded by remember { mutableStateOf(false) }
 
     // Buscar el nombre del contacto
     LaunchedEffect(callerNumber) {
         callerName = getContactNameFromNumber(context, callerNumber)
+    }
+
+    // Monitorear si la llamada fue cancelada
+    LaunchedEffect(Unit) {
+        CallManager.setCallStateCallback { state ->
+            Log.d("IncomingCallScreen", "Estado de llamada actualizado: $state")
+
+            // Si la llamada se desconectó antes de contestar
+            if (state == Call.STATE_DISCONNECTED && !hasEnded) {
+                Log.d("IncomingCallScreen", "Llamada cancelada - cerrando pantalla")
+                hasEnded = true
+                IncomingCallState.incomingCallNumber.value = null
+                IncomingCallState.callEnded.value = true
+            }
+        }
+    }
+
+    // Verificar periódicamente si la llamada sigue sonando
+    LaunchedEffect(Unit) {
+        while (!hasEnded) {
+            kotlinx.coroutines.delay(500) // Verificar cada medio segundo
+
+            val currentCall = CallManager.ongoingCall
+            if (currentCall == null && !hasEnded) {
+                Log.d("IncomingCallScreen", "Llamada ya no existe - cerrando pantalla")
+                hasEnded = true
+                IncomingCallState.incomingCallNumber.value = null
+                IncomingCallState.callEnded.value = true
+                return@LaunchedEffect
+            }
+
+            // Verificar el estado de la llamada directamente
+            currentCall?.let { call ->
+                // Si ya no está timbrando y no fue aceptada, significa que se canceló
+                if (call.state != Call.STATE_RINGING && call.state != Call.STATE_ACTIVE && !hasEnded) {
+                    Log.d("IncomingCallScreen", "Llamada dejó de timbrar (estado: ${call.state}) - cerrando pantalla")
+                    hasEnded = true
+                    IncomingCallState.incomingCallNumber.value = null
+                    IncomingCallState.callEnded.value = true
+                    return@LaunchedEffect
+                }
+            }
+        }
     }
 
     // Mantener la pantalla encendida
@@ -918,9 +1031,12 @@ fun IncomingCallScreen(
         activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
 
         onDispose {
+            Log.d("IncomingCallScreen", "Pantalla de llamada entrante destruida - limpiando recursos")
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
             activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            // Limpiar el callback
+            CallManager.setCallStateCallback { }
         }
     }
 
@@ -1423,6 +1539,11 @@ fun getCurrentDate(): String {
     return sdf.format(Date())
 }
 
+fun getBatteryLevel(context: Context): Int {
+    val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    return batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+}
+
 fun toggleSilentMode(context: Context, onModeChanged: (Boolean) -> Unit) {
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -1499,11 +1620,14 @@ fun getMissedCalls(context: Context): List<CallLog> {
     val missedCalls = mutableListOf<CallLog>()
 
     try {
+        // Calcular el tiempo de hace 24 horas
+        val twentyFourHoursAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
+
         val cursor = context.contentResolver.query(
             android.provider.CallLog.Calls.CONTENT_URI,
             null,
-            "${android.provider.CallLog.Calls.TYPE} = ?",
-            arrayOf(android.provider.CallLog.Calls.MISSED_TYPE.toString()),
+            "${android.provider.CallLog.Calls.TYPE} = ? AND ${android.provider.CallLog.Calls.DATE} >= ?",
+            arrayOf(android.provider.CallLog.Calls.MISSED_TYPE.toString(), twentyFourHoursAgo.toString()),
             "${android.provider.CallLog.Calls.DATE} DESC"
         )
 
@@ -1783,6 +1907,25 @@ fun AdvancedOptionsScreen(
             icon = Icons.Filled.Person,
             onClick = onNavigateToNewContact,
             backgroundColor = Color(0xFF58D68D) // Verde
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Botón Configuraciones del Teléfono
+        LargeAccessibleButton(
+            text = "Configuraciones del Teléfono",
+            icon = Icons.Filled.Build,
+            onClick = {
+                try {
+                    val intent = Intent(Settings.ACTION_SETTINGS)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "No se pudo abrir configuraciones", Toast.LENGTH_SHORT).show()
+                    Log.e("AdvancedOptions", "Error abriendo configuraciones: ${e.message}", e)
+                }
+            },
+            backgroundColor = Color(0xFF5DADE2) // Azul
         )
 
         Spacer(modifier = Modifier.height(24.dp))
