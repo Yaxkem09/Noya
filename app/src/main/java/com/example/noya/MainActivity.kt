@@ -75,6 +75,10 @@ object IncomingCallState {
     var callEnded = mutableStateOf(false)
 }
 
+object ScreenNavigationState {
+    var shouldNavigateToHome = mutableStateOf(false)
+}
+
 class MainActivity : ComponentActivity() {
     companion object {
         private const val REQUEST_CODE_SET_DEFAULT_DIALER = 1001
@@ -171,6 +175,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onStop() {
+        super.onStop()
+        Log.d("MainActivity", "onStop llamado - regresando a pantalla principal")
+        // Navegar a home cuando la app se pone en segundo plano (pantalla suspendida)
+        ScreenNavigationState.shouldNavigateToHome.value = true
+    }
 }
 
 data class Contact(
@@ -210,6 +221,17 @@ fun MainScreen() {
             currentScreen = "home"
             activeCallContact = null
             IncomingCallState.callEnded.value = false
+        }
+    }
+
+    // Observar cuando debe navegar a home (pantalla suspendida)
+    val shouldNavigateToHome by ScreenNavigationState.shouldNavigateToHome
+    LaunchedEffect(shouldNavigateToHome) {
+        if (shouldNavigateToHome) {
+            Log.d("MainScreen", "Pantalla suspendida, regresando a home")
+            currentScreen = "home"
+            activeCallContact = null
+            ScreenNavigationState.shouldNavigateToHome.value = false
         }
     }
 
@@ -354,7 +376,7 @@ fun HomeScreen(
         ) {
             // Botón Llamadas
             LargeAccessibleButton(
-                text = "Llamar11",
+                text = "Llamar1",
                 icon = Icons.Filled.Call,
                 onClick = {
                     onNavigateToContacts()
