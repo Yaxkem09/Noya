@@ -67,6 +67,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.example.noya.ui.theme.NoyaTheme
@@ -190,7 +196,8 @@ class MainActivity : ComponentActivity() {
 data class Contact(
     val id: String,
     val name: String,
-    val phoneNumber: String
+    val phoneNumber: String,
+    val photoUri: String? = null
 )
 
 data class CallLog(
@@ -242,7 +249,10 @@ fun MainScreen() {
         "home" -> HomeScreen(
             onNavigateToContacts = { currentScreen = "contacts" },
             onNavigateToAdvancedOptions = { currentScreen = "advancedOptions" },
-            onNavigateToMissedCalls = { currentScreen = "missedCalls" }
+            onCallContact = { contact ->
+                activeCallContact = contact
+                currentScreen = "activeCall"
+            }
         )
         "contacts" -> ContactsScreen(
             onNavigateBack = { currentScreen = "home" },
@@ -257,13 +267,6 @@ fun MainScreen() {
         "advancedOptions" -> AdvancedOptionsScreen(
             onNavigateBack = { currentScreen = "home" },
             onNavigateToNewContact = { currentScreen = "newContact" }
-        )
-        "missedCalls" -> MissedCallsScreen(
-            onNavigateBack = { currentScreen = "home" },
-            onCallContact = { contact ->
-                activeCallContact = contact
-                currentScreen = "activeCall"
-            }
         )
         "incomingCall" -> IncomingCallScreen(
             callerNumber = incomingCallerNumber ?: "Desconocido",
@@ -293,7 +296,7 @@ fun MainScreen() {
 fun HomeScreen(
     onNavigateToContacts: () -> Unit,
     onNavigateToAdvancedOptions: () -> Unit,
-    onNavigateToMissedCalls: () -> Unit
+    onCallContact: (Contact) -> Unit
 ) {
     val context = LocalContext.current
     var currentTime by remember { mutableStateOf(getCurrentTime()) }
@@ -303,6 +306,21 @@ fun HomeScreen(
     var pressProgress by remember { mutableStateOf(0f) }
     var isPressing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    var missedCalls by remember { mutableStateOf<List<CallLog>>(emptyList()) }
+    var hasCallLogPermission by remember { mutableStateOf(false) }
+
+    // Cargar llamadas perdidas
+    LaunchedEffect(Unit) {
+        val readGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_CALL_LOG
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (readGranted) {
+            hasCallLogPermission = true
+            missedCalls = getMissedCalls(context)
+        }
+    }
 
     // Actualizar la hora y batería cada segundo
     LaunchedEffect(Unit) {
@@ -350,7 +368,7 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 24.dp, bottom = 32.dp),
+                    .padding(top = 60.dp, bottom = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -370,61 +388,43 @@ fun HomeScreen(
                 )
             }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Botones principales en cuadrícula 2x2
-        Column(
+        // Botones principales - solo Llamar y Silenciar
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Primera fila
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Botón Llamar
-                GridImageButton(
-                    text = "Llamar5",
-                    imageRes = R.drawable.ic_btn_llamar,
-                    onClick = { onNavigateToContacts() },
-                    modifier = Modifier.weight(1f)
-                )
+            // Botón Llamar
+            GridImageButton(
+                text = "Llamar9",
+                imageRes = R.drawable.ic_btn_llamar,
+                onClick = { onNavigateToContacts() },
+                modifier = Modifier.weight(1f)
+            )
 
-                // Botón Llamadas Perdidas
-                GridImageButton(
-                    text = "Perdidas",
-                    imageRes = R.drawable.ic_btn_perdidas,
-                    onClick = { onNavigateToMissedCalls() },
-                    backgroundColor = Color(0xFFE74C3C),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // Segunda fila
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Botón Modo Silencio
-                GridImageButton(
-                    text = if (isSilentMode) "Sonido" else "Silenciar",
-                    imageRes = if (isSilentMode) R.drawable.ic_btn_sonido else R.drawable.ic_btn_silenciar,
-                    onClick = {
-                        toggleSilentMode(context) { newMode ->
-                            isSilentMode = newMode
-                        }
-                    },
-                    backgroundColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2),
-                    modifier = Modifier.weight(1f)
-                )
-
-                // Espacio vacío o cuarto botón (puedes agregar otro botón aquí)
-                Spacer(modifier = Modifier.weight(1f))
-            }
+            // Botón Modo Silencio
+            GridImageButton(
+                text = if (isSilentMode) "Sonido" else "Silenciar",
+                imageRes = if (isSilentMode) R.drawable.ic_btn_sonido else R.drawable.ic_btn_silenciar,
+                onClick = {
+                    toggleSilentMode(context) { newMode ->
+                        isSilentMode = newMode
+                    }
+                },
+                backgroundColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2),
+                modifier = Modifier.weight(1f)
+            )
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Panel de Llamadas Perdidas
+        MissedCallsPanel(
+            missedCalls = missedCalls,
+            onCallContact = onCallContact,
+            modifier = Modifier.weight(1f)
+        )
         }
 
         // Botón de opciones avanzadas en la esquina superior izquierda
@@ -618,57 +618,91 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
 
 @Composable
 fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
+    val context = LocalContext.current
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(100.dp),
+            .height(120.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 4.dp
-        )
+        ),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Foto del contacto - cuadrada con esquinas redondeadas
+            Box(
+                modifier = Modifier
+                    .size(95.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .background(Color(0xFFE8E8E8)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (contact.photoUri != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(contact.photoUri)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Foto de ${contact.name}",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    // Icono por defecto si no tiene foto
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = "Sin foto",
+                        modifier = Modifier.size(50.dp),
+                        tint = Color(0xFF85929E)
+                    )
+                }
+            }
+
             // Información del contacto
             Column(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
                     text = contact.name,
-                    fontSize = 24.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Black
+                    color = Color(0xFF2C3E50)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = contact.phoneNumber,
-                    fontSize = 18.sp,
-                    color = Color.DarkGray
+                    fontSize = 16.sp,
+                    color = Color(0xFF85929E)
                 )
             }
 
             // Botón de llamar
             Button(
                 onClick = onCallClick,
-                modifier = Modifier
-                    .size(80.dp),
+                modifier = Modifier.size(70.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF58D68D), // Verde más suave y brillante
+                    containerColor = Color(0xFF58D68D),
                     contentColor = Color.White
                 ),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Phone,
-                    contentDescription = "Llamar0",
-                    modifier = Modifier.size(40.dp)
+                    contentDescription = "Llamar",
+                    modifier = Modifier.size(36.dp)
                 )
             }
         }
@@ -677,6 +711,8 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
 
 fun getContacts(context: Context): List<Contact> {
     val contacts = mutableListOf<Contact>()
+    val seenNumbers = mutableSetOf<String>() // Para evitar duplicados
+
     val cursor: Cursor? = context.contentResolver.query(
         ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
         null,
@@ -689,14 +725,20 @@ fun getContacts(context: Context): List<Contact> {
         val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
         val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
         val idIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone._ID)
+        val photoUriIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
 
         while (it.moveToNext()) {
             val id = it.getString(idIndex)
             val name = it.getString(nameIndex) ?: "Sin nombre"
             val number = it.getString(numberIndex) ?: ""
+            val photoUri = if (photoUriIndex >= 0) it.getString(photoUriIndex) else null
 
-            if (number.isNotEmpty()) {
-                contacts.add(Contact(id, name, number))
+            // Normalizar el número (quitar espacios, guiones, paréntesis)
+            val normalizedNumber = number.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
+
+            if (number.isNotEmpty() && !seenNumbers.contains(normalizedNumber)) {
+                seenNumbers.add(normalizedNumber)
+                contacts.add(Contact(id, name, number, photoUri))
             }
         }
     }
@@ -1734,6 +1776,136 @@ fun GridImageButton(
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+fun MissedCallsPanel(
+    missedCalls: List<CallLog>,
+    onCallContact: (Contact) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 4.dp
+        ),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            // Título del panel
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CallMissed,
+                    contentDescription = "Llamadas Perdidas",
+                    modifier = Modifier.size(28.dp),
+                    tint = Color(0xFFE74C3C)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Llamadas Perdidas",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2C3E50)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (missedCalls.isEmpty()) {
+                // Mensaje cuando no hay llamadas perdidas
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No hay llamadas perdidas",
+                        fontSize = 18.sp,
+                        color = Color(0xFF85929E),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                // Lista de llamadas perdidas
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(missedCalls) { callLog ->
+                        MissedCallPanelItem(
+                            callLog = callLog,
+                            onCallClick = {
+                                val contact = Contact(
+                                    callLog.id,
+                                    callLog.name ?: callLog.phoneNumber,
+                                    callLog.phoneNumber
+                                )
+                                onCallContact(contact)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MissedCallPanelItem(
+    callLog: CallLog,
+    onCallClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Información de la llamada
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = callLog.name ?: callLog.phoneNumber,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2C3E50)
+            )
+            Text(
+                text = "${callLog.time}",
+                fontSize = 16.sp,
+                color = Color(0xFFE74C3C)
+            )
+        }
+
+        // Botón de llamar
+        Button(
+            onClick = onCallClick,
+            modifier = Modifier.size(60.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF58D68D),
+                contentColor = Color.White
+            ),
+            contentPadding = PaddingValues(0.dp),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Phone,
+                contentDescription = "Llamar",
+                modifier = Modifier.size(32.dp)
             )
         }
     }
