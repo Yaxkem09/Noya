@@ -56,6 +56,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.text.KeyboardActions
@@ -369,48 +372,59 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Botones principales
+        // Botones principales en cuadrícula 2x2
         Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Botón Llamadas
-            LargeAccessibleButton(
-                text = "Llamar1",
-                icon = Icons.Filled.Call,
-                onClick = {
-                    onNavigateToContacts()
-                }
-            )
+            // Primera fila
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Botón Llamar
+                GridImageButton(
+                    text = "Llamar5",
+                    imageRes = R.drawable.ic_btn_llamar,
+                    onClick = { onNavigateToContacts() },
+                    modifier = Modifier.weight(1f)
+                )
 
-            Spacer(modifier = Modifier.height(24.dp))
+                // Botón Llamadas Perdidas
+                GridImageButton(
+                    text = "Perdidas",
+                    imageRes = R.drawable.ic_btn_perdidas,
+                    onClick = { onNavigateToMissedCalls() },
+                    backgroundColor = Color(0xFFE74C3C),
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
-            // Botón Llamadas Perdidas
-            LargeAccessibleButton(
-                text = "Llamadas Perdidas",
-                icon = Icons.Filled.CallMissed,
-                onClick = {
-                    onNavigateToMissedCalls()
-                },
-                backgroundColor = Color(0xFFE74C3C) // Rojo suave
-            )
+            // Segunda fila
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Botón Modo Silencio
+                GridImageButton(
+                    text = if (isSilentMode) "Sonido" else "Silenciar",
+                    imageRes = if (isSilentMode) R.drawable.ic_btn_sonido else R.drawable.ic_btn_silenciar,
+                    onClick = {
+                        toggleSilentMode(context) { newMode ->
+                            isSilentMode = newMode
+                        }
+                    },
+                    backgroundColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2),
+                    modifier = Modifier.weight(1f)
+                )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Botón Modo Silencio
-            LargeAccessibleButton(
-                text = if (isSilentMode) "Activar Sonido" else "Silenciar",
-                icon = if (isSilentMode) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
-                onClick = {
-                    toggleSilentMode(context) { newMode ->
-                        isSilentMode = newMode
-                    }
-                },
-                backgroundColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2) // Naranja cuando está silenciado, azul cuando está normal
-            )
+                // Espacio vacío o cuarto botón (puedes agregar otro botón aquí)
+                Spacer(modifier = Modifier.weight(1f))
+            }
         }
 
-            Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.weight(1f))
         }
 
         // Botón de opciones avanzadas en la esquina superior izquierda
@@ -1633,6 +1647,93 @@ fun LargeAccessibleButton(
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+fun LargeImageButton(
+    text: String,
+    @DrawableRes imageRes: Int,
+    onClick: () -> Unit,
+    backgroundColor: Color = Color(0xFF5DADE2)
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = backgroundColor,
+            contentColor = Color.White
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 8.dp,
+            pressedElevation = 12.dp
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = imageRes),
+                contentDescription = text,
+                modifier = Modifier.size(64.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = text,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+fun GridImageButton(
+    text: String,
+    @DrawableRes imageRes: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = Color(0xFF5DADE2)
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .aspectRatio(1f), // Hace el botón cuadrado
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), // Esquinas redondeadas, no circular
+        colors = ButtonDefaults.buttonColors(
+            containerColor = backgroundColor,
+            contentColor = Color.White
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 8.dp,
+            pressedElevation = 12.dp
+        ),
+        contentPadding = PaddingValues(12.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Image(
+                painter = painterResource(id = imageRes),
+                contentDescription = text,
+                modifier = Modifier.size(110.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = text,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
             )
         }
     }
