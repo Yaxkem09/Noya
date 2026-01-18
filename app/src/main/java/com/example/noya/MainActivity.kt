@@ -88,6 +88,10 @@ object ScreenNavigationState {
     var shouldNavigateToHome = mutableStateOf(false)
 }
 
+object AppSettings {
+    var hideContactNames = mutableStateOf(false)
+}
+
 class MainActivity : ComponentActivity() {
     companion object {
         private const val REQUEST_CODE_SET_DEFAULT_DIALER = 1001
@@ -397,7 +401,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar9",
+                text = "Llamar10",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -619,11 +623,12 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
 @Composable
 fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
     val context = LocalContext.current
+    val hideNames by AppSettings.hideContactNames
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height(if (hideNames) 140.dp else 120.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
@@ -642,7 +647,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
             // Foto del contacto - cuadrada con esquinas redondeadas
             Box(
                 modifier = Modifier
-                    .size(95.dp)
+                    .size(if (hideNames) 115.dp else 95.dp)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
                     .background(Color(0xFFE8E8E8)),
                 contentAlignment = Alignment.Center
@@ -664,34 +669,39 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                     Icon(
                         imageVector = Icons.Filled.Person,
                         contentDescription = "Sin foto",
-                        modifier = Modifier.size(50.dp),
+                        modifier = Modifier.size(if (hideNames) 60.dp else 50.dp),
                         tint = Color(0xFF85929E)
                     )
                 }
             }
 
-            // Información del contacto
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = contact.name,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2C3E50)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = contact.phoneNumber,
-                    fontSize = 16.sp,
-                    color = Color(0xFF85929E)
-                )
+            // Información del contacto (solo si no está oculto)
+            if (!hideNames) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = contact.name,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2C3E50)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = contact.phoneNumber,
+                        fontSize = 16.sp,
+                        color = Color(0xFF85929E)
+                    )
+                }
+            } else {
+                // Espacio flexible cuando se ocultan los nombres
+                Spacer(modifier = Modifier.weight(1f))
             }
 
             // Botón de llamar
             Button(
                 onClick = onCallClick,
-                modifier = Modifier.size(70.dp),
+                modifier = Modifier.size(if (hideNames) 90.dp else 70.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF58D68D),
                     contentColor = Color.White
@@ -702,7 +712,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                 Icon(
                     imageVector = Icons.Filled.Phone,
                     contentDescription = "Llamar",
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(if (hideNames) 50.dp else 36.dp)
                 )
             }
         }
@@ -2225,7 +2235,7 @@ fun AdvancedOptionsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Contenido de opciones avanzadas (puedes agregar más opciones aquí)
+        // Panel de Configuración
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2235,22 +2245,48 @@ fun AdvancedOptionsScreen(
             ),
             elevation = CardDefaults.cardElevation(
                 defaultElevation = 4.dp
-            )
+            ),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp)
             ) {
                 Text(
-                    text = "Panel de Configuración",
+                    text = "Configuración de Contactos",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF2C3E50)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Checkbox para ocultar nombres
+                var hideNames by AppSettings.hideContactNames
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Ocultar nombres de contactos",
+                        fontSize = 18.sp,
+                        color = Color(0xFF2C3E50),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Checkbox(
+                        checked = hideNames,
+                        onCheckedChange = { hideNames = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFF58D68D),
+                            uncheckedColor = Color(0xFF85929E)
+                        )
+                    )
+                }
                 Text(
-                    text = "Aquí puedes agregar configuraciones avanzadas de la aplicación.",
-                    fontSize = 18.sp,
-                    color = Color(0xFF5D6D7E)
+                    text = "Solo se mostrará la foto del contacto",
+                    fontSize = 14.sp,
+                    color = Color(0xFF85929E)
                 )
             }
         }
