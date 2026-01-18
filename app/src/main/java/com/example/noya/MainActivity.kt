@@ -315,8 +315,11 @@ fun HomeScreen(
     var missedCalls by remember { mutableStateOf<List<CallLog>>(emptyList()) }
     var hasCallLogPermission by remember { mutableStateOf(false) }
 
-    // Cargar llamadas perdidas
-    LaunchedEffect(Unit) {
+    // Contador para forzar actualización de llamadas perdidas
+    var refreshTrigger by remember { mutableStateOf(0) }
+
+    // Cargar llamadas perdidas (se actualiza cuando cambia refreshTrigger)
+    LaunchedEffect(Unit, refreshTrigger) {
         val readGranted = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.READ_CALL_LOG
@@ -325,6 +328,16 @@ fun HomeScreen(
         if (readGranted) {
             hasCallLogPermission = true
             missedCalls = getMissedCalls(context)
+        }
+    }
+
+    // Actualizar llamadas perdidas periódicamente (cada 5 segundos) para detectar llamadas devueltas
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(5000) // Actualizar cada 5 segundos
+            if (hasCallLogPermission) {
+                missedCalls = getMissedCalls(context)
+            }
         }
     }
 
@@ -403,7 +416,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar14",
+                text = "Llamar17",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -791,6 +804,15 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     var callState by remember { mutableStateOf<Int?>(null) }
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     var hasEnded by remember { mutableStateOf(false) }
+    var contactPhoto by remember { mutableStateOf<String?>(contact.photoUri) }
+
+    // Obtener la foto del contacto si no la tenemos
+    LaunchedEffect(contact.phoneNumber) {
+        if (contactPhoto == null) {
+            val (_, photoUri) = getContactInfoFromNumber(context, contact.phoneNumber)
+            contactPhoto = photoUri
+        }
+    }
 
     // Monitorear el estado de la llamada con callback
     LaunchedEffect(Unit) {
@@ -839,8 +861,8 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     LaunchedEffect(contact.id) {
         // Configurar el modo de audio al iniciar
         try {
-            audioManager.mode = AudioManager.MODE_IN_CALL
-            Log.d("ActiveCallScreen", "Modo de audio configurado a IN_CALL")
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            Log.d("ActiveCallScreen", "Modo de audio configurado a IN_COMMUNICATION")
         } catch (e: Exception) {
             Log.e("ActiveCallScreen", "Error al configurar modo de audio: ${e.message}", e)
         }
@@ -894,13 +916,35 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     ) {
         Spacer(modifier = Modifier.weight(1f))
 
-        // Icono de llamada
-        Icon(
-            imageVector = Icons.Filled.Phone,
-            contentDescription = "En llamada",
-            modifier = Modifier.size(120.dp),
-            tint = Color(0xFF58D68D) // Verde más suave
-        )
+        // Foto del contacto o icono por defecto
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                .background(Color(0xFFE8E8E8)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (contactPhoto != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(contactPhoto)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Foto de ${contact.name}",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = "Sin foto",
+                    modifier = Modifier.size(80.dp),
+                    tint = Color(0xFF58D68D)
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -936,21 +980,25 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Botón de altavoz
+        // Botón de más volumen (altavoz)
         Button(
             onClick = {
                 isSpeakerOn = !isSpeakerOn
 
                 try {
+                    // Usar MODE_IN_COMMUNICATION para mejor compatibilidad con altavoz
+                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
                     if (isSpeakerOn) {
                         // Activar altavoz
-                        audioManager.mode = AudioManager.MODE_IN_CALL
                         audioManager.isSpeakerphoneOn = true
-                        Log.d("ActiveCallScreen", "Altavoz activado - Modo: ${audioManager.mode}, Speaker: ${audioManager.isSpeakerphoneOn}")
+                        // Subir volumen de comunicación al máximo
+                        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+                        audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, maxVolume, 0)
+                        Log.d("ActiveCallScreen", "Altavoz activado - Modo: ${audioManager.mode}, Speaker: ${audioManager.isSpeakerphoneOn}, Vol: $maxVolume")
                     } else {
                         // Desactivar altavoz
                         audioManager.isSpeakerphoneOn = false
-                        audioManager.mode = AudioManager.MODE_IN_CALL
                         Log.d("ActiveCallScreen", "Altavoz desactivado - Modo: ${audioManager.mode}, Speaker: ${audioManager.isSpeakerphoneOn}")
                     }
 
@@ -978,12 +1026,12 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
             ) {
                 Icon(
                     imageVector = if (isSpeakerOn) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
-                    contentDescription = "Altavoz",
+                    contentDescription = "Más volumen",
                     modifier = Modifier.size(48.dp)
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = if (isSpeakerOn) "Desactivar Altavoz" else "Activar Altavoz",
+                    text = if (isSpeakerOn) "Volumen Normal" else "Más Volumen",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1037,11 +1085,14 @@ fun IncomingCallScreen(
 ) {
     val context = LocalContext.current
     var callerName by remember { mutableStateOf<String?>(null) }
+    var callerPhoto by remember { mutableStateOf<String?>(null) }
     var hasEnded by remember { mutableStateOf(false) }
 
-    // Buscar el nombre del contacto
+    // Buscar el nombre y foto del contacto
     LaunchedEffect(callerNumber) {
-        callerName = getContactNameFromNumber(context, callerNumber)
+        val (name, photoUri) = getContactInfoFromNumber(context, callerNumber)
+        callerName = name
+        callerPhoto = photoUri
     }
 
     // Monitorear si la llamada fue cancelada
@@ -1113,13 +1164,35 @@ fun IncomingCallScreen(
     ) {
         Spacer(modifier = Modifier.weight(1f))
 
-        // Icono de llamada entrante
-        Icon(
-            imageVector = Icons.Filled.Phone,
-            contentDescription = "Llamada entrante",
-            modifier = Modifier.size(120.dp),
-            tint = Color(0xFF58D68D)
-        )
+        // Foto del contacto o icono por defecto
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                .background(Color(0xFFE8E8E8)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (callerPhoto != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(callerPhoto)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Foto de ${callerName ?: callerNumber}",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = "Sin foto",
+                    modifier = Modifier.size(80.dp),
+                    tint = Color(0xFF58D68D)
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -1802,15 +1875,11 @@ fun MissedCallsPanel(
     onCallContact: (Contact) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFB71C1C) // Rojo más opaco/oscuro
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 4.dp
-        ),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .background(Color(0xFFB71C1C).copy(alpha = 0.65f)) // Rojo semi-transparente
     ) {
         Column(
             modifier = Modifier
@@ -1971,12 +2040,14 @@ fun MissedCallPanelItem(
 
 fun getMissedCalls(context: Context): List<CallLog> {
     val missedCalls = mutableListOf<CallLog>()
+    val returnedCallNumbers = mutableSetOf<String>() // Números a los que ya se devolvió la llamada
 
     try {
         // Calcular el tiempo de hace 24 horas
         val twentyFourHoursAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
 
-        val cursor = context.contentResolver.query(
+        // Primero, obtener las llamadas perdidas
+        val missedCursor = context.contentResolver.query(
             android.provider.CallLog.Calls.CONTENT_URI,
             null,
             "${android.provider.CallLog.Calls.TYPE} = ? AND ${android.provider.CallLog.Calls.DATE} >= ?",
@@ -1984,7 +2055,10 @@ fun getMissedCalls(context: Context): List<CallLog> {
             "${android.provider.CallLog.Calls.DATE} DESC"
         )
 
-        cursor?.use {
+        // Guardar temporalmente las llamadas perdidas con su fecha
+        val tempMissedCalls = mutableListOf<Pair<CallLog, Long>>()
+
+        missedCursor?.use {
             val numberIndex = it.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
             val dateIndex = it.getColumnIndex(android.provider.CallLog.Calls.DATE)
             val idIndex = it.getColumnIndex(android.provider.CallLog.Calls._ID)
@@ -1998,9 +2072,50 @@ fun getMissedCalls(context: Context): List<CallLog> {
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(dateMillis))
                 val (name, photoUri) = getContactInfoFromNumber(context, number)
 
-                missedCalls.add(CallLog(id, number, name, date, time, photoUri))
+                tempMissedCalls.add(Pair(CallLog(id, number, name, date, time, photoUri), dateMillis))
             }
         }
+
+        // Luego, buscar llamadas salientes en las últimas 24 horas para ver si se devolvió alguna llamada
+        val outgoingCursor = context.contentResolver.query(
+            android.provider.CallLog.Calls.CONTENT_URI,
+            null,
+            "${android.provider.CallLog.Calls.TYPE} = ? AND ${android.provider.CallLog.Calls.DATE} >= ?",
+            arrayOf(android.provider.CallLog.Calls.OUTGOING_TYPE.toString(), twentyFourHoursAgo.toString()),
+            "${android.provider.CallLog.Calls.DATE} DESC"
+        )
+
+        // Guardar las llamadas salientes con su fecha
+        val outgoingCalls = mutableListOf<Pair<String, Long>>() // número normalizado, fecha
+
+        outgoingCursor?.use {
+            val numberIndex = it.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
+            val dateIndex = it.getColumnIndex(android.provider.CallLog.Calls.DATE)
+
+            while (it.moveToNext()) {
+                val number = it.getString(numberIndex) ?: ""
+                val dateMillis = it.getLong(dateIndex)
+                val normalizedNumber = number.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
+                if (normalizedNumber.isNotEmpty()) {
+                    outgoingCalls.add(Pair(normalizedNumber, dateMillis))
+                }
+            }
+        }
+
+        // Filtrar las llamadas perdidas: excluir aquellas a las que se les devolvió la llamada DESPUÉS de perderla
+        for ((callLog, missedDateMillis) in tempMissedCalls) {
+            val normalizedMissedNumber = callLog.phoneNumber.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
+
+            // Verificar si hay una llamada saliente a este número DESPUÉS de la llamada perdida
+            val wasReturned = outgoingCalls.any { (outgoingNumber, outgoingDate) ->
+                outgoingNumber == normalizedMissedNumber && outgoingDate > missedDateMillis
+            }
+
+            if (!wasReturned) {
+                missedCalls.add(callLog)
+            }
+        }
+
     } catch (e: Exception) {
         Log.e("MissedCalls", "Error obteniendo llamadas perdidas: ${e.message}", e)
     }
