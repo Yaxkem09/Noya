@@ -210,7 +210,8 @@ data class CallLog(
     val phoneNumber: String,
     val name: String?,
     val date: String,
-    val time: String
+    val time: String,
+    val photoUri: String? = null
 )
 
 @Composable
@@ -402,7 +403,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar11.2",
+                text = "Llamar14",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -1592,6 +1593,35 @@ fun getContactNameFromNumber(context: Context, phoneNumber: String): String? {
     return null
 }
 
+fun getContactInfoFromNumber(context: Context, phoneNumber: String): Pair<String?, String?> {
+    try {
+        val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber))
+        val cursor = context.contentResolver.query(
+            uri,
+            arrayOf(
+                ContactsContract.PhoneLookup.DISPLAY_NAME,
+                ContactsContract.PhoneLookup.PHOTO_URI
+            ),
+            null,
+            null,
+            null
+        )
+
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val nameIndex = it.getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME)
+                val photoIndex = it.getColumnIndex(ContactsContract.PhoneLookup.PHOTO_URI)
+                val name = if (nameIndex >= 0) it.getString(nameIndex) else null
+                val photoUri = if (photoIndex >= 0) it.getString(photoIndex) else null
+                return Pair(name, photoUri)
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("GetContactInfo", "Error: ${e.message}", e)
+    }
+    return Pair(null, null)
+}
+
 fun getCurrentTime(): String {
     val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
     return sdf.format(Date())
@@ -1775,7 +1805,7 @@ fun MissedCallsPanel(
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor = Color(0xFFB71C1C) // Rojo más opaco/oscuro
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 4.dp
@@ -1796,14 +1826,14 @@ fun MissedCallsPanel(
                     imageVector = Icons.Filled.CallMissed,
                     contentDescription = "Llamadas Perdidas",
                     modifier = Modifier.size(28.dp),
-                    tint = Color(0xFFE74C3C)
+                    tint = Color.White
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Llamadas Perdidas",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2C3E50)
+                    color = Color.White
                 )
             }
 
@@ -1818,7 +1848,7 @@ fun MissedCallsPanel(
                     Text(
                         text = "No hay llamadas perdidas",
                         fontSize = 18.sp,
-                        color = Color(0xFF85929E),
+                        color = Color(0xFFFFCDD2), // Rojo claro
                         textAlign = TextAlign.Center
                     )
                 }
@@ -1852,28 +1882,71 @@ fun MissedCallPanelItem(
     callLog: CallLog,
     onCallClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val hideNames by AppSettings.hideContactNames
+    val photoSize by AppSettings.contactPhotoSize
+
+    // Tamaño de foto para el panel
+    val panelPhotoSize = (photoSize * 0.8f).coerceIn(70f, 120f)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Información de la llamada
-        Column(
-            modifier = Modifier.weight(1f)
+        // Foto del contacto
+        Box(
+            modifier = Modifier
+                .size(panelPhotoSize.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .background(Color(0xFFFFCDD2)),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = callLog.name ?: callLog.phoneNumber,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF2C3E50)
-            )
-            Text(
-                text = "${callLog.time}",
-                fontSize = 16.sp,
-                color = Color(0xFFE74C3C)
-            )
+            if (callLog.photoUri != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(callLog.photoUri)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Foto de ${callLog.name ?: callLog.phoneNumber}",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // Icono por defecto si no tiene foto
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = "Sin foto",
+                    modifier = Modifier.size((panelPhotoSize * 0.5f).dp),
+                    tint = Color(0xFFB71C1C)
+                )
+            }
+        }
+
+        // Información de la llamada (solo si no está oculto)
+        if (!hideNames) {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = callLog.name ?: callLog.phoneNumber,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = callLog.time,
+                    fontSize = 16.sp,
+                    color = Color(0xFFFFCDD2) // Rojo claro para la hora
+                )
+            }
+        } else {
+            // Espacio flexible cuando se ocultan los nombres
+            Spacer(modifier = Modifier.weight(1f))
         }
 
         // Botón de llamar
@@ -1881,8 +1954,8 @@ fun MissedCallPanelItem(
             onClick = onCallClick,
             modifier = Modifier.size(60.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF58D68D),
-                contentColor = Color.White
+                containerColor = Color.White,
+                contentColor = Color(0xFF58D68D)
             ),
             contentPadding = PaddingValues(0.dp),
             shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
@@ -1923,9 +1996,9 @@ fun getMissedCalls(context: Context): List<CallLog> {
 
                 val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(dateMillis))
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(dateMillis))
-                val name = getContactNameFromNumber(context, number)
+                val (name, photoUri) = getContactInfoFromNumber(context, number)
 
-                missedCalls.add(CallLog(id, number, name, date, time))
+                missedCalls.add(CallLog(id, number, name, date, time, photoUri))
             }
         }
     } catch (e: Exception) {
@@ -2278,8 +2351,8 @@ fun AdvancedOptionsScreen(
                 Slider(
                     value = photoSize,
                     onValueChange = { photoSize = it },
-                    valueRange = 60f..150f,
-                    steps = 8,
+                    valueRange = 60f..200f,
+                    steps = 13,
                     colors = SliderDefaults.colors(
                         thumbColor = Color(0xFF58D68D),
                         activeTrackColor = Color(0xFF58D68D),
