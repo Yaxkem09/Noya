@@ -90,6 +90,7 @@ object ScreenNavigationState {
 
 object AppSettings {
     var hideContactNames = mutableStateOf(false)
+    var contactPhotoSize = mutableStateOf(95f) // Tamaño por defecto en dp
 }
 
 class MainActivity : ComponentActivity() {
@@ -401,7 +402,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar10",
+                text = "Llamar11.2",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -551,37 +552,6 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
             .fillMaxSize()
             .padding(24.dp)
     ) {
-        // Botón de regresar
-        Button(
-            onClick = onNavigateBack,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(80.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF85929E), // Gris suave
-                contentColor = Color.White
-            )
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Regresar",
-                    modifier = Modifier.size(32.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "Regresar",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
         // Título
         Text(
             text = "Contactos",
@@ -624,11 +594,15 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
 fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
     val context = LocalContext.current
     val hideNames by AppSettings.hideContactNames
+    val photoSize by AppSettings.contactPhotoSize
+
+    // Calcular altura del card basada en el tamaño de la foto
+    val cardHeight = (photoSize + 25).dp
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (hideNames) 140.dp else 120.dp),
+            .height(cardHeight),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
@@ -647,7 +621,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
             // Foto del contacto - cuadrada con esquinas redondeadas
             Box(
                 modifier = Modifier
-                    .size(if (hideNames) 115.dp else 95.dp)
+                    .size(photoSize.dp)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
                     .background(Color(0xFFE8E8E8)),
                 contentAlignment = Alignment.Center
@@ -669,7 +643,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                     Icon(
                         imageVector = Icons.Filled.Person,
                         contentDescription = "Sin foto",
-                        modifier = Modifier.size(if (hideNames) 60.dp else 50.dp),
+                        modifier = Modifier.size((photoSize * 0.5f).dp),
                         tint = Color(0xFF85929E)
                     )
                 }
@@ -698,10 +672,11 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                 Spacer(modifier = Modifier.weight(1f))
             }
 
-            // Botón de llamar
+            // Botón de llamar - tamaño proporcional a la foto
+            val buttonSize = (photoSize * 0.75f).coerceIn(60f, 100f)
             Button(
                 onClick = onCallClick,
-                modifier = Modifier.size(if (hideNames) 90.dp else 70.dp),
+                modifier = Modifier.size(buttonSize.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF58D68D),
                     contentColor = Color.White
@@ -712,7 +687,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                 Icon(
                     imageVector = Icons.Filled.Phone,
                     contentDescription = "Llamar",
-                    modifier = Modifier.size(if (hideNames) 50.dp else 36.dp)
+                    modifier = Modifier.size((buttonSize * 0.5f).dp)
                 )
             }
         }
@@ -2288,6 +2263,44 @@ fun AdvancedOptionsScreen(
                     fontSize = 14.sp,
                     color = Color(0xFF85929E)
                 )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Slider para tamaño de fotos
+                var photoSize by AppSettings.contactPhotoSize
+                Text(
+                    text = "Tamaño de fotos: ${photoSize.toInt()} dp",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF2C3E50)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Slider(
+                    value = photoSize,
+                    onValueChange = { photoSize = it },
+                    valueRange = 60f..150f,
+                    steps = 8,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color(0xFF58D68D),
+                        activeTrackColor = Color(0xFF58D68D),
+                        inactiveTrackColor = Color(0xFFE8E8E8)
+                    )
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Pequeño",
+                        fontSize = 12.sp,
+                        color = Color(0xFF85929E)
+                    )
+                    Text(
+                        text = "Grande",
+                        fontSize = 12.sp,
+                        color = Color(0xFF85929E)
+                    )
+                }
             }
         }
     }
