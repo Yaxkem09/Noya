@@ -299,6 +299,13 @@ class MainActivity : ComponentActivity() {
         // Navegar a home cuando la app se pone en segundo plano (pantalla suspendida)
         ScreenNavigationState.shouldNavigateToHome.value = true
     }
+
+    override fun onRestart() {
+        super.onRestart()
+        Log.d("MainActivity", "onRestart llamado - navegando a home")
+        // Navegar a home cuando la app vuelve de estar suspendida
+        ScreenNavigationState.shouldNavigateToHome.value = true
+    }
 }
 
 data class Contact(
@@ -531,7 +538,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar26",
+                text = "Llamar27",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
