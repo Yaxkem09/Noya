@@ -71,6 +71,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.delay
@@ -78,6 +79,108 @@ import kotlinx.coroutines.launch
 import com.example.noya.ui.theme.NoyaTheme
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.Dp
+
+// Objeto para dimensiones responsivas basadas en el tamaño de pantalla
+object ResponsiveDimens {
+    // Factores de escala basados en una pantalla de referencia de 360dp de ancho
+    private const val REFERENCE_WIDTH = 360f
+
+    @Composable
+    fun getScaleFactor(): Float {
+        val configuration = LocalConfiguration.current
+        val screenWidth = configuration.screenWidthDp.toFloat()
+        return (screenWidth / REFERENCE_WIDTH).coerceIn(0.8f, 1.5f)
+    }
+
+    // Padding general
+    @Composable
+    fun screenPadding(): Dp = (24 * getScaleFactor()).dp
+
+    @Composable
+    fun smallPadding(): Dp = (8 * getScaleFactor()).dp
+
+    @Composable
+    fun mediumPadding(): Dp = (16 * getScaleFactor()).dp
+
+    @Composable
+    fun largePadding(): Dp = (24 * getScaleFactor()).dp
+
+    // Tamaños de texto (en sp, pero escalados)
+    @Composable
+    fun timeTextSize(): Float = 56 * getScaleFactor()
+
+    @Composable
+    fun dateTextSize(): Float = 24 * getScaleFactor()
+
+    @Composable
+    fun titleTextSize(): Float = 32 * getScaleFactor()
+
+    @Composable
+    fun largeTextSize(): Float = 28 * getScaleFactor()
+
+    @Composable
+    fun mediumTextSize(): Float = 24 * getScaleFactor()
+
+    @Composable
+    fun normalTextSize(): Float = 22 * getScaleFactor()
+
+    @Composable
+    fun smallTextSize(): Float = 18 * getScaleFactor()
+
+    @Composable
+    fun tinyTextSize(): Float = 16 * getScaleFactor()
+
+    // Tamaños de botones
+    @Composable
+    fun largeButtonHeight(): Dp = (100 * getScaleFactor()).dp
+
+    @Composable
+    fun mediumButtonHeight(): Dp = (80 * getScaleFactor()).dp
+
+    @Composable
+    fun smallButtonHeight(): Dp = (60 * getScaleFactor()).dp
+
+    @Composable
+    fun extraSmallButtonHeight(): Dp = (48 * getScaleFactor()).dp
+
+    // Tamaños de iconos
+    @Composable
+    fun largeIconSize(): Dp = (48 * getScaleFactor()).dp
+
+    @Composable
+    fun mediumIconSize(): Dp = (32 * getScaleFactor()).dp
+
+    @Composable
+    fun smallIconSize(): Dp = (28 * getScaleFactor()).dp
+
+    // Tamaños de fotos/avatares
+    @Composable
+    fun contactPhotoSize(): Dp = (150 * getScaleFactor()).dp
+
+    @Composable
+    fun callPhotoSize(): Dp = (150 * getScaleFactor()).dp
+
+    // Tamaño del botón de imagen en grid
+    @Composable
+    fun gridImageSize(): Dp = (110 * getScaleFactor()).dp
+
+    // Corner radius
+    @Composable
+    fun cornerRadius(): Dp = (16 * getScaleFactor()).dp
+
+    @Composable
+    fun largeCornerRadius(): Dp = (20 * getScaleFactor()).dp
+
+    @Composable
+    fun smallCornerRadius(): Dp = (12 * getScaleFactor()).dp
+
+    // Settings button size
+    @Composable
+    fun settingsButtonSize(): Dp = (60 * getScaleFactor()).dp
+}
 
 object IncomingCallState {
     var incomingCallNumber = mutableStateOf<String?>(null)
@@ -374,49 +477,61 @@ fun HomeScreen(
         }
     }
 
+    // Obtener dimensiones responsivas
+    val screenPadding = ResponsiveDimens.screenPadding()
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val largePadding = ResponsiveDimens.largePadding()
+    val timeTextSize = ResponsiveDimens.timeTextSize()
+    val dateTextSize = ResponsiveDimens.dateTextSize()
+    val smallTextSize = ResponsiveDimens.smallTextSize()
+    val mediumIconSize = ResponsiveDimens.mediumIconSize()
+    val smallIconSize = ResponsiveDimens.smallIconSize()
+    val settingsButtonSize = ResponsiveDimens.settingsButtonSize()
+
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(screenPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Hora y Fecha en la parte superior
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 60.dp, bottom = 32.dp),
+                    .padding(top = (60 * ResponsiveDimens.getScaleFactor()).dp, bottom = largePadding),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = currentTime,
-                    fontSize = 56.sp,
+                    fontSize = timeTextSize.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF2C3E50), // Azul oscuro suave
                     textAlign = TextAlign.Center
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(smallPadding))
                 Text(
                     text = currentDate,
-                    fontSize = 24.sp,
+                    fontSize = dateTextSize.sp,
                     fontWeight = FontWeight.Normal,
                     color = Color(0xFF5D6D7E), // Gris azulado
                     textAlign = TextAlign.Center
                 )
             }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(mediumPadding))
 
         // Botones principales - solo Llamar y Silenciar
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(mediumPadding)
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar17",
+                text = "Llamar26",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -436,7 +551,7 @@ fun HomeScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(mediumPadding))
 
         // Panel de Llamadas Perdidas
         MissedCallsPanel(
@@ -449,8 +564,8 @@ fun HomeScreen(
         // Botón de opciones avanzadas en la esquina superior izquierda
         Box(
             modifier = Modifier
-                .padding(top = 8.dp, start = 8.dp)
-                .size(60.dp)
+                .padding(top = smallPadding, start = smallPadding)
+                .size(settingsButtonSize)
                 .align(Alignment.TopStart)
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -480,7 +595,7 @@ fun HomeScreen(
                 Icon(
                     imageVector = Icons.Filled.Settings,
                     contentDescription = "Opciones Avanzadas",
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(mediumIconSize),
                     tint = Color(0xFF2C3E50)
                 )
             }
@@ -489,7 +604,7 @@ fun HomeScreen(
         // Indicador de batería en la esquina superior derecha
         Box(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(mediumPadding)
                 .align(Alignment.TopEnd)
         ) {
             Row(
@@ -499,7 +614,7 @@ fun HomeScreen(
                 Icon(
                     imageVector = Icons.Filled.BatteryChargingFull,
                     contentDescription = "Batería",
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(smallIconSize),
                     tint = when {
                         batteryLevel > 50 -> Color(0xFF58D68D) // Verde
                         batteryLevel > 20 -> Color(0xFFE67E22) // Naranja
@@ -508,7 +623,7 @@ fun HomeScreen(
                 )
                 Text(
                     text = "$batteryLevel%",
-                    fontSize = 18.sp,
+                    fontSize = smallTextSize.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF2C3E50)
                 )
@@ -561,18 +676,24 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
         }
     }
 
+    // Dimensiones responsivas
+    val screenPadding = ResponsiveDimens.screenPadding()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val titleTextSize = ResponsiveDimens.titleTextSize()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
+            .padding(screenPadding)
     ) {
         // Título
         Text(
             text = "Contactos",
-            fontSize = 32.sp,
+            fontSize = titleTextSize.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF2C3E50), // Azul oscuro suave
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = mediumPadding)
         )
 
         // Lista de contactos
@@ -580,7 +701,7 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
             if (contacts.isEmpty()) {
                 Text(
                     text = "No hay contactos",
-                    fontSize = 24.sp,
+                    fontSize = mediumTextSize.sp,
                     color = Color.Gray,
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center
@@ -588,7 +709,7 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(mediumPadding)
                 ) {
                     items(contacts) { contact ->
                         ContactItem(
@@ -610,8 +731,17 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
     val hideNames by AppSettings.hideContactNames
     val photoSize by AppSettings.contactPhotoSize
 
-    // Calcular altura del card basada en el tamaño de la foto
-    val cardHeight = (photoSize + 25).dp
+    // Dimensiones responsivas
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val smallCornerRadius = ResponsiveDimens.smallCornerRadius()
+    val cornerRadius = ResponsiveDimens.cornerRadius()
+    val normalTextSize = ResponsiveDimens.normalTextSize()
+    val tinyTextSize = ResponsiveDimens.tinyTextSize()
+
+    // Calcular altura del card basada en el tamaño de la foto (escalado)
+    val scaledPhotoSize = photoSize * scaleFactor
+    val cardHeight = (scaledPhotoSize + 25 * scaleFactor).dp
 
     Card(
         modifier = Modifier
@@ -623,20 +753,20 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(
             defaultElevation = 4.dp
         ),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp),
+                .padding(smallPadding),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(smallCornerRadius)
         ) {
             // Foto del contacto - cuadrada con esquinas redondeadas
             Box(
                 modifier = Modifier
-                    .size(photoSize.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .size(scaledPhotoSize.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
                     .background(Color(0xFFE8E8E8)),
                 contentAlignment = Alignment.Center
             ) {
@@ -649,7 +779,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                         contentDescription = "Foto de ${contact.name}",
                         modifier = Modifier
                             .fillMaxSize()
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
                         contentScale = ContentScale.Crop
                     )
                 } else {
@@ -657,7 +787,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                     Icon(
                         imageVector = Icons.Filled.Person,
                         contentDescription = "Sin foto",
-                        modifier = Modifier.size((photoSize * 0.5f).dp),
+                        modifier = Modifier.size((scaledPhotoSize * 0.5f).dp),
                         tint = Color(0xFF85929E)
                     )
                 }
@@ -670,14 +800,14 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                 ) {
                     Text(
                         text = contact.name,
-                        fontSize = 22.sp,
+                        fontSize = normalTextSize.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF2C3E50)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = contact.phoneNumber,
-                        fontSize = 16.sp,
+                        fontSize = tinyTextSize.sp,
                         color = Color(0xFF85929E)
                     )
                 }
@@ -687,7 +817,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
             }
 
             // Botón de llamar - tamaño proporcional a la foto
-            val buttonSize = (photoSize * 0.75f).coerceIn(60f, 100f)
+            val buttonSize = (scaledPhotoSize * 0.75f).coerceIn(60f * scaleFactor, 100f * scaleFactor)
             Button(
                 onClick = onCallClick,
                 modifier = Modifier.size(buttonSize.dp),
@@ -696,7 +826,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                     contentColor = Color.White
                 ),
                 contentPadding = PaddingValues(0.dp),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Phone,
@@ -907,10 +1037,22 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         }
     }
 
+    // Dimensiones responsivas
+    val screenPadding = ResponsiveDimens.screenPadding()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val largePadding = ResponsiveDimens.largePadding()
+    val callPhotoSize = ResponsiveDimens.callPhotoSize()
+    val largeCornerRadius = ResponsiveDimens.largeCornerRadius()
+    val largeTextSize = ResponsiveDimens.largeTextSize()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+    val largeIconSize = ResponsiveDimens.largeIconSize()
+    val largeButtonHeight = ResponsiveDimens.largeButtonHeight()
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(screenPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -919,8 +1061,8 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         // Foto del contacto o icono por defecto
         Box(
             modifier = Modifier
-                .size(150.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                .size(callPhotoSize)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(largeCornerRadius))
                 .background(Color(0xFFE8E8E8)),
             contentAlignment = Alignment.Center
         ) {
@@ -933,46 +1075,46 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                     contentDescription = "Foto de ${contact.name}",
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(largeCornerRadius)),
                     contentScale = ContentScale.Crop
                 )
             } else {
                 Icon(
                     imageVector = Icons.Filled.Person,
                     contentDescription = "Sin foto",
-                    modifier = Modifier.size(80.dp),
+                    modifier = Modifier.size((80 * scaleFactor).dp),
                     tint = Color(0xFF58D68D)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Nombre del contacto
         Text(
             text = contact.name,
-            fontSize = 36.sp,
+            fontSize = (36 * scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF2C3E50), // Azul oscuro suave
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(mediumPadding))
 
         // Número de teléfono
         Text(
             text = contact.phoneNumber,
-            fontSize = 24.sp,
+            fontSize = mediumTextSize.sp,
             color = Color(0xFF5D6D7E), // Gris azulado
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Estado de llamada
         Text(
             text = "En llamada...",
-            fontSize = 28.sp,
+            fontSize = largeTextSize.sp,
             fontWeight = FontWeight.Normal,
             color = Color(0xFF85929E), // Gris suave
             textAlign = TextAlign.Center
@@ -1014,7 +1156,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp),
+                .height(largeButtonHeight),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isSpeakerOn) Color(0xFF5DADE2) else Color(0xFF85929E), // Azul claro o gris suave
                 contentColor = Color.White
@@ -1027,18 +1169,18 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                 Icon(
                     imageVector = if (isSpeakerOn) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
                     contentDescription = "Más volumen",
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(largeIconSize)
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(mediumPadding))
                 Text(
                     text = if (isSpeakerOn) "Volumen Normal" else "Más Volumen",
-                    fontSize = 24.sp,
+                    fontSize = mediumTextSize.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Botón para colgar
         Button(
@@ -1049,7 +1191,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp),
+                .height(largeButtonHeight),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFFEC7063), // Rojo más suave y menos agresivo
                 contentColor = Color.White
@@ -1062,18 +1204,18 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                 Icon(
                     imageVector = Icons.Filled.Call,
                     contentDescription = "Colgar",
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(largeIconSize)
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(mediumPadding))
                 Text(
                     text = "Colgar",
-                    fontSize = 24.sp,
+                    fontSize = mediumTextSize.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height((48 * scaleFactor).dp))
     }
 }
 
@@ -1155,10 +1297,24 @@ fun IncomingCallScreen(
         }
     }
 
+    // Dimensiones responsivas
+    val screenPadding = ResponsiveDimens.screenPadding()
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val largePadding = ResponsiveDimens.largePadding()
+    val callPhotoSize = ResponsiveDimens.callPhotoSize()
+    val largeCornerRadius = ResponsiveDimens.largeCornerRadius()
+    val largeTextSize = ResponsiveDimens.largeTextSize()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+    val titleTextSize = ResponsiveDimens.titleTextSize()
+    val largeIconSize = ResponsiveDimens.largeIconSize()
+    val largeButtonHeight = ResponsiveDimens.largeButtonHeight()
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(screenPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -1167,8 +1323,8 @@ fun IncomingCallScreen(
         // Foto del contacto o icono por defecto
         Box(
             modifier = Modifier
-                .size(150.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                .size(callPhotoSize)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(largeCornerRadius))
                 .background(Color(0xFFE8E8E8)),
             contentAlignment = Alignment.Center
         ) {
@@ -1181,48 +1337,48 @@ fun IncomingCallScreen(
                     contentDescription = "Foto de ${callerName ?: callerNumber}",
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(largeCornerRadius)),
                     contentScale = ContentScale.Crop
                 )
             } else {
                 Icon(
                     imageVector = Icons.Filled.Person,
                     contentDescription = "Sin foto",
-                    modifier = Modifier.size(80.dp),
+                    modifier = Modifier.size((80 * scaleFactor).dp),
                     tint = Color(0xFF58D68D)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Texto "Llamada entrante"
         Text(
             text = "Llamada entrante",
-            fontSize = 28.sp,
+            fontSize = largeTextSize.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF2C3E50),
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Nombre del contacto si está disponible
         if (callerName != null) {
             Text(
                 text = callerName!!,
-                fontSize = 36.sp,
+                fontSize = (36 * scaleFactor).sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF2C3E50),
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(smallPadding))
         }
 
         // Número de teléfono
         Text(
             text = callerNumber,
-            fontSize = if (callerName != null) 24.sp else 32.sp,
+            fontSize = if (callerName != null) mediumTextSize.sp else titleTextSize.sp,
             fontWeight = if (callerName != null) FontWeight.Normal else FontWeight.Bold,
             color = Color(0xFF5D6D7E),
             textAlign = TextAlign.Center
@@ -1235,7 +1391,7 @@ fun IncomingCallScreen(
             onClick = onAccept,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp),
+                .height(largeButtonHeight),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF58D68D), // Verde
                 contentColor = Color.White
@@ -1248,25 +1404,25 @@ fun IncomingCallScreen(
                 Icon(
                     imageVector = Icons.Filled.Phone,
                     contentDescription = "Aceptar",
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(largeIconSize)
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(mediumPadding))
                 Text(
                     text = "Aceptar",
-                    fontSize = 28.sp,
+                    fontSize = largeTextSize.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Botón para rechazar
         Button(
             onClick = onReject,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp),
+                .height(largeButtonHeight),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFFEC7063), // Rojo suave
                 contentColor = Color.White
@@ -1279,18 +1435,18 @@ fun IncomingCallScreen(
                 Icon(
                     imageVector = Icons.Filled.Call,
                     contentDescription = "Rechazar",
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(largeIconSize)
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(mediumPadding))
                 Text(
                     text = "Rechazar",
-                    fontSize = 28.sp,
+                    fontSize = largeTextSize.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height((48 * scaleFactor).dp))
     }
 }
 
@@ -1300,6 +1456,27 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
     var phoneNumber by remember { mutableStateOf("") }
     var contactName by remember { mutableStateOf("") }
     var hasPermission by remember { mutableStateOf(false) }
+    var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Dimensiones responsivas
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val smallButtonHeight = ResponsiveDimens.smallButtonHeight()
+    val extraSmallButtonHeight = ResponsiveDimens.extraSmallButtonHeight()
+    val mediumButtonHeight = ResponsiveDimens.mediumButtonHeight()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+    val smallTextSize = ResponsiveDimens.smallTextSize()
+    val largeTextSize = ResponsiveDimens.largeTextSize()
+    val normalTextSize = ResponsiveDimens.normalTextSize()
+    val mediumIconSize = ResponsiveDimens.mediumIconSize()
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+
+    // Launcher para seleccionar foto
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedPhotoUri = uri
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -1326,14 +1503,14 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(12.dp)
+            .padding(smallPadding)
     ) {
         // Botón de regresar
         Button(
             onClick = onNavigateBack,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp),
+                .height(smallButtonHeight),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF85929E), // Gris suave
                 contentColor = Color.White
@@ -1346,29 +1523,29 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Regresar",
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(mediumIconSize)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(smallPadding))
                 Text(
                     text = "Regresar",
-                    fontSize = 18.sp,
+                    fontSize = smallTextSize.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(smallPadding))
 
         // Contenido con scroll
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(smallPadding)
         ) {
             item {
                 // Título
                 Text(
                     text = "Nuevo Contacto",
-                    fontSize = 24.sp,
+                    fontSize = mediumTextSize.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF2C3E50) // Azul oscuro suave
                 )
@@ -1379,7 +1556,7 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(70.dp),
+                        .height((70 * scaleFactor).dp),
                     colors = CardDefaults.cardColors(
                         containerColor = Color(0xFFF5F5F5)
                     )
@@ -1387,12 +1564,12 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(12.dp),
+                            .padding(smallPadding),
                         contentAlignment = Alignment.CenterStart
                     ) {
                         Text(
                             text = if (phoneNumber.isEmpty()) "Número de teléfono" else phoneNumber,
-                            fontSize = 28.sp,
+                            fontSize = largeTextSize.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (phoneNumber.isEmpty()) Color(0xFF85929E) else Color(0xFF2C3E50) // Gris suave o azul oscuro
                         )
@@ -1401,7 +1578,7 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
             }
 
             item {
-                // Teclado numérico
+                // Teclado numérico más pequeño
                 NumericKeyboard(
                     onNumberClick = { number ->
                         phoneNumber += number
@@ -1410,7 +1587,9 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                         if (phoneNumber.isNotEmpty()) {
                             phoneNumber = phoneNumber.dropLast(1)
                         }
-                    }
+                    },
+                    customButtonHeight = extraSmallButtonHeight,
+                    customTextSize = normalTextSize
                 )
             }
 
@@ -1422,11 +1601,12 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                     factory = { context ->
                         android.widget.EditText(context).apply {
                             hint = "Nombre del contacto"
-                            textSize = 24f
+                            textSize = 24f * scaleFactor
                             setTextColor(android.graphics.Color.BLACK)
                             setHintTextColor(android.graphics.Color.GRAY)
                             setBackgroundColor(android.graphics.Color.parseColor("#F5F5F5"))
-                            setPadding(32, 32, 32, 32)
+                            val padding = (32 * scaleFactor).toInt()
+                            setPadding(padding, padding, padding, padding)
                             inputType = android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
                                        android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
                             imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI or
@@ -1461,8 +1641,68 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(70.dp)
+                        .height((70 * scaleFactor).dp)
                 )
+            }
+
+            item {
+                // Sección para agregar foto
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = smallPadding),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(mediumPadding)
+                ) {
+                    // Vista previa de la foto o placeholder
+                    Box(
+                        modifier = Modifier
+                            .size((80 * scaleFactor).dp)
+                            .background(
+                                color = Color(0xFFF5F5F5),
+                                shape = RoundedCornerShape((12 * scaleFactor).dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selectedPhotoUri != null) {
+                            AsyncImage(
+                                model = selectedPhotoUri,
+                                contentDescription = "Foto del contacto",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape((12 * scaleFactor).dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Person,
+                                contentDescription = "Sin foto",
+                                modifier = Modifier.size((40 * scaleFactor).dp),
+                                tint = Color(0xFF85929E)
+                            )
+                        }
+                    }
+
+                    // Botón para seleccionar foto
+                    Button(
+                        onClick = {
+                            photoPickerLauncher.launch("image/*")
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(extraSmallButtonHeight),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF9B59B6),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text(
+                            text = if (selectedPhotoUri != null) "Cambiar Foto" else "Agregar Foto",
+                            fontSize = smallTextSize.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
 
             item {
@@ -1471,7 +1711,7 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                     onClick = {
                         if (phoneNumber.isNotEmpty() && contactName.isNotEmpty()) {
                             if (hasPermission) {
-                                saveContact(context, contactName, phoneNumber)
+                                saveContactWithPhoto(context, contactName, phoneNumber, selectedPhotoUri)
                                 Toast.makeText(context, "Contacto guardado", Toast.LENGTH_SHORT).show()
                                 onNavigateBack()
                             } else {
@@ -1483,7 +1723,7 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(65.dp),
+                        .height((65 * scaleFactor).dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF58D68D), // Verde más suave y brillante
                         contentColor = Color.White
@@ -1496,12 +1736,12 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                         Icon(
                             imageVector = Icons.Filled.Save,
                             contentDescription = "Guardar",
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(mediumIconSize)
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(smallPadding))
                         Text(
                             text = "Guardar Contacto",
-                            fontSize = 20.sp,
+                            fontSize = smallTextSize.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -1510,7 +1750,7 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
 
             item {
                 // Espacio extra al final para asegurar que el botón sea visible
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(mediumPadding))
             }
         }
     }
@@ -1519,8 +1759,19 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
 @Composable
 fun NumericKeyboard(
     onNumberClick: (String) -> Unit,
-    onBackspaceClick: () -> Unit
+    onBackspaceClick: () -> Unit,
+    customButtonHeight: Dp? = null,
+    customTextSize: Float? = null
 ) {
+    // Dimensiones responsivas
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val smallButtonHeight = ResponsiveDimens.smallButtonHeight()
+    val largeTextSize = ResponsiveDimens.largeTextSize()
+    val smallIconSize = ResponsiveDimens.smallIconSize()
+
+    val buttonHeight = customButtonHeight ?: smallButtonHeight
+    val textSize = customTextSize ?: largeTextSize
+
     val buttons = listOf(
         listOf("1", "2", "3"),
         listOf("4", "5", "6"),
@@ -1530,19 +1781,19 @@ fun NumericKeyboard(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(smallPadding)
     ) {
         buttons.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(smallPadding)
             ) {
                 row.forEach { digit ->
                     Button(
                         onClick = { onNumberClick(digit) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(60.dp),
+                            .height(buttonHeight),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF34495E), // Azul grisáceo oscuro pero suave
                             contentColor = Color.White
@@ -1550,7 +1801,7 @@ fun NumericKeyboard(
                     ) {
                         Text(
                             text = digit,
-                            fontSize = 28.sp,
+                            fontSize = textSize.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -1567,7 +1818,7 @@ fun NumericKeyboard(
                 onClick = onBackspaceClick,
                 modifier = Modifier
                     .weight(1f)
-                    .height(60.dp),
+                    .height(buttonHeight),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFFE67E22), // Naranja más suave
                     contentColor = Color.White
@@ -1576,7 +1827,7 @@ fun NumericKeyboard(
                 Icon(
                     imageVector = Icons.Filled.Backspace,
                     contentDescription = "Borrar",
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(smallIconSize)
                 )
             }
         }
@@ -1635,6 +1886,64 @@ fun saveContact(context: Context, name: String, phoneNumber: String) {
         context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
 
         Toast.makeText(context, "Contacto guardado en teléfono", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error guardando contacto: ${e.message}", Toast.LENGTH_LONG).show()
+        Log.e("SaveContact", "Error: ${e.message}", e)
+    }
+}
+
+fun saveContactWithPhoto(context: Context, name: String, phoneNumber: String, photoUri: Uri?) {
+    try {
+        // Crear contacto en el teléfono (no SIM para poder guardar foto)
+        val contentValues = android.content.ContentValues().apply {
+            put(ContactsContract.RawContacts.ACCOUNT_TYPE, null as String?)
+            put(ContactsContract.RawContacts.ACCOUNT_NAME, null as String?)
+        }
+
+        val rawContactUri = context.contentResolver.insert(
+            ContactsContract.RawContacts.CONTENT_URI,
+            contentValues
+        )
+
+        val rawContactId = rawContactUri?.lastPathSegment?.toLong() ?: return
+
+        // Insertar nombre
+        val nameValues = android.content.ContentValues().apply {
+            put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+            put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+            put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+        }
+        context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, nameValues)
+
+        // Insertar número de teléfono
+        val phoneValues = android.content.ContentValues().apply {
+            put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+            put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+            put(ContactsContract.CommonDataKinds.Phone.NUMBER, phoneNumber)
+            put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+        }
+        context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
+
+        // Insertar foto si existe
+        if (photoUri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(photoUri)
+                val photoBytes = inputStream?.readBytes()
+                inputStream?.close()
+
+                if (photoBytes != null) {
+                    val photoValues = android.content.ContentValues().apply {
+                        put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+                        put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Photo.CONTENT_ITEM_TYPE)
+                        put(ContactsContract.CommonDataKinds.Photo.PHOTO, photoBytes)
+                    }
+                    context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, photoValues)
+                }
+            } catch (e: Exception) {
+                Log.e("SaveContact", "Error guardando foto: ${e.message}", e)
+            }
+        }
+
     } catch (e: Exception) {
         Toast.makeText(context, "Error guardando contacto: ${e.message}", Toast.LENGTH_LONG).show()
         Log.e("SaveContact", "Error: ${e.message}", e)
@@ -1744,13 +2053,26 @@ fun LargeAccessibleButton(
     text: String,
     icon: ImageVector,
     onClick: () -> Unit,
-    backgroundColor: Color = Color(0xFF5DADE2) // Azul claro y suave por defecto
+    backgroundColor: Color = Color(0xFF5DADE2), // Azul claro y suave por defecto
+    modifier: Modifier = Modifier,
+    customHeight: Dp? = null,
+    customIconSize: Dp? = null,
+    customTextSize: Float? = null
 ) {
+    // Dimensiones responsivas
+    val largeButtonHeight = ResponsiveDimens.largeButtonHeight()
+    val largeIconSize = ResponsiveDimens.largeIconSize()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+    val buttonHeight = customHeight ?: largeButtonHeight
+    val iconSize = customIconSize ?: largeIconSize
+    val textSize = customTextSize ?: mediumTextSize
+
     Button(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(100.dp),
+            .height(buttonHeight),
         colors = ButtonDefaults.buttonColors(
             containerColor = backgroundColor,
             contentColor = Color.White
@@ -1768,13 +2090,13 @@ fun LargeAccessibleButton(
             Icon(
                 imageVector = icon,
                 contentDescription = text,
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(iconSize),
                 tint = Color.White
             )
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(mediumPadding))
             Text(
                 text = text,
-                fontSize = 24.sp,
+                fontSize = textSize.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
@@ -1789,11 +2111,16 @@ fun LargeImageButton(
     onClick: () -> Unit,
     backgroundColor: Color = Color(0xFF5DADE2)
 ) {
+    // Dimensiones responsivas
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+
     Button(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height((120 * scaleFactor).dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = backgroundColor,
             contentColor = Color.White
@@ -1811,12 +2138,12 @@ fun LargeImageButton(
             Image(
                 painter = painterResource(id = imageRes),
                 contentDescription = text,
-                modifier = Modifier.size(64.dp)
+                modifier = Modifier.size((64 * scaleFactor).dp)
             )
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(mediumPadding))
             Text(
                 text = text,
-                fontSize = 24.sp,
+                fontSize = mediumTextSize.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
@@ -1832,11 +2159,17 @@ fun GridImageButton(
     modifier: Modifier = Modifier,
     backgroundColor: Color = Color(0xFF5DADE2)
 ) {
+    // Dimensiones responsivas
+    val cornerRadius = ResponsiveDimens.cornerRadius()
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val gridImageSize = ResponsiveDimens.gridImageSize()
+    val smallTextSize = ResponsiveDimens.smallTextSize()
+
     Button(
         onClick = onClick,
         modifier = modifier
             .aspectRatio(1f), // Hace el botón cuadrado
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), // Esquinas redondeadas, no circular
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius), // Esquinas redondeadas, no circular
         colors = ButtonDefaults.buttonColors(
             containerColor = backgroundColor,
             contentColor = Color.White
@@ -1845,7 +2178,7 @@ fun GridImageButton(
             defaultElevation = 8.dp,
             pressedElevation = 12.dp
         ),
-        contentPadding = PaddingValues(12.dp)
+        contentPadding = PaddingValues(smallPadding)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1855,12 +2188,12 @@ fun GridImageButton(
             Image(
                 painter = painterResource(id = imageRes),
                 contentDescription = text,
-                modifier = Modifier.size(110.dp)
+                modifier = Modifier.size(gridImageSize)
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = text,
-                fontSize = 18.sp,
+                fontSize = smallTextSize.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 textAlign = TextAlign.Center
@@ -1875,16 +2208,24 @@ fun MissedCallsPanel(
     onCallContact: (Contact) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Dimensiones responsivas
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val cornerRadius = ResponsiveDimens.cornerRadius()
+    val smallIconSize = ResponsiveDimens.smallIconSize()
+    val normalTextSize = ResponsiveDimens.normalTextSize()
+    val smallTextSize = ResponsiveDimens.smallTextSize()
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius))
             .background(Color(0xFFB71C1C).copy(alpha = 0.65f)) // Rojo semi-transparente
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(mediumPadding)
         ) {
             // Título del panel
             Row(
@@ -1894,19 +2235,19 @@ fun MissedCallsPanel(
                 Icon(
                     imageVector = Icons.Filled.CallMissed,
                     contentDescription = "Llamadas Perdidas",
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(smallIconSize),
                     tint = Color.White
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(smallPadding))
                 Text(
                     text = "Llamadas Perdidas",
-                    fontSize = 22.sp,
+                    fontSize = normalTextSize.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(smallPadding))
 
             if (missedCalls.isEmpty()) {
                 // Mensaje cuando no hay llamadas perdidas
@@ -1916,7 +2257,7 @@ fun MissedCallsPanel(
                 ) {
                     Text(
                         text = "No hay llamadas perdidas",
-                        fontSize = 18.sp,
+                        fontSize = smallTextSize.sp,
                         color = Color(0xFFFFCDD2), // Rojo claro
                         textAlign = TextAlign.Center
                     )
@@ -1925,7 +2266,7 @@ fun MissedCallsPanel(
                 // Lista de llamadas perdidas
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(smallPadding)
                 ) {
                     items(missedCalls) { callLog ->
                         MissedCallPanelItem(
@@ -1955,21 +2296,29 @@ fun MissedCallPanelItem(
     val hideNames by AppSettings.hideContactNames
     val photoSize by AppSettings.contactPhotoSize
 
-    // Tamaño de foto para el panel
-    val panelPhotoSize = (photoSize * 0.8f).coerceIn(70f, 120f)
+    // Dimensiones responsivas
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val smallCornerRadius = ResponsiveDimens.smallCornerRadius()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+    val tinyTextSize = ResponsiveDimens.tinyTextSize()
+    val mediumIconSize = ResponsiveDimens.mediumIconSize()
+
+    // Tamaño de foto para el panel (escalado)
+    val panelPhotoSize = (photoSize * 0.8f * scaleFactor).coerceIn(70f * scaleFactor, 120f * scaleFactor)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = smallPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(smallCornerRadius)
     ) {
         // Foto del contacto
         Box(
             modifier = Modifier
                 .size(panelPhotoSize.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
                 .background(Color(0xFFFFCDD2)),
             contentAlignment = Alignment.Center
         ) {
@@ -1982,7 +2331,7 @@ fun MissedCallPanelItem(
                     contentDescription = "Foto de ${callLog.name ?: callLog.phoneNumber}",
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
                     contentScale = ContentScale.Crop
                 )
             } else {
@@ -2003,13 +2352,13 @@ fun MissedCallPanelItem(
             ) {
                 Text(
                     text = callLog.name ?: callLog.phoneNumber,
-                    fontSize = 26.sp,
+                    fontSize = mediumTextSize.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
                     text = callLog.time,
-                    fontSize = 16.sp,
+                    fontSize = tinyTextSize.sp,
                     color = Color(0xFFFFCDD2) // Rojo claro para la hora
                 )
             }
@@ -2019,20 +2368,21 @@ fun MissedCallPanelItem(
         }
 
         // Botón de llamar
+        val callButtonSize = (60 * scaleFactor).dp
         Button(
             onClick = onCallClick,
-            modifier = Modifier.size(60.dp),
+            modifier = Modifier.size(callButtonSize),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color.White,
                 contentColor = Color(0xFF58D68D)
             ),
             contentPadding = PaddingValues(0.dp),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)
         ) {
             Icon(
                 imageVector = Icons.Filled.Phone,
                 contentDescription = "Llamar",
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(mediumIconSize)
             )
         }
     }
@@ -2324,17 +2674,34 @@ fun AdvancedOptionsScreen(
 ) {
     val context = LocalContext.current
 
+    // Dimensiones responsivas
+    val screenPadding = ResponsiveDimens.screenPadding()
+    val smallPadding = ResponsiveDimens.smallPadding()
+    val mediumPadding = ResponsiveDimens.mediumPadding()
+    val largePadding = ResponsiveDimens.largePadding()
+    val mediumButtonHeight = ResponsiveDimens.mediumButtonHeight()
+    val mediumIconSize = ResponsiveDimens.mediumIconSize()
+    val cornerRadius = ResponsiveDimens.cornerRadius()
+    val titleTextSize = ResponsiveDimens.titleTextSize()
+    val mediumTextSize = ResponsiveDimens.mediumTextSize()
+    val normalTextSize = ResponsiveDimens.normalTextSize()
+    val smallTextSize = ResponsiveDimens.smallTextSize()
+    val tinyTextSize = ResponsiveDimens.tinyTextSize()
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
+            .padding(screenPadding)
     ) {
         // Botón de regresar
+        val extraSmallButtonHeight = ResponsiveDimens.extraSmallButtonHeight()
+        val smallIconSize = ResponsiveDimens.smallIconSize()
         Button(
             onClick = onNavigateBack,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(80.dp),
+                .height(extraSmallButtonHeight),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF85929E),
                 contentColor = Color.White
@@ -2347,39 +2714,34 @@ fun AdvancedOptionsScreen(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Regresar",
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(smallIconSize)
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(smallPadding))
                 Text(
                     text = "Regresar",
-                    fontSize = 22.sp,
+                    fontSize = smallTextSize.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Título
-        Text(
-            text = "Opciones Avanzadas",
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF2C3E50),
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Botón Nuevo Contacto
         LargeAccessibleButton(
             text = "Nuevo Contacto",
             icon = Icons.Filled.Person,
             onClick = onNavigateToNewContact,
-            backgroundColor = Color(0xFF58D68D) // Verde
+            backgroundColor = Color(0xFF58D68D), // Verde
+            customHeight = extraSmallButtonHeight,
+            customIconSize = smallIconSize,
+            customTextSize = smallTextSize
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Botón Configuraciones del Teléfono
+        val smallButtonHeight = ResponsiveDimens.smallButtonHeight()
         LargeAccessibleButton(
             text = "Configuraciones del Teléfono",
             icon = Icons.Filled.Build,
@@ -2393,47 +2755,50 @@ fun AdvancedOptionsScreen(
                     Log.e("AdvancedOptions", "Error abriendo configuraciones: ${e.message}", e)
                 }
             },
-            backgroundColor = Color(0xFF5DADE2) // Azul
+            backgroundColor = Color(0xFF5DADE2), // Azul
+            customHeight = smallButtonHeight,
+            customIconSize = mediumIconSize,
+            customTextSize = normalTextSize
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(largePadding))
 
         // Panel de Configuración
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
+                .padding(vertical = smallPadding),
             colors = CardDefaults.cardColors(
                 containerColor = Color.White
             ),
             elevation = CardDefaults.cardElevation(
                 defaultElevation = 4.dp
             ),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier.padding(largePadding)
             ) {
                 Text(
                     text = "Configuración de Contactos",
-                    fontSize = 24.sp,
+                    fontSize = mediumTextSize.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF2C3E50)
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(mediumPadding))
 
                 // Checkbox para ocultar nombres
                 var hideNames by AppSettings.hideContactNames
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = smallPadding),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = "Ocultar nombres de contactos",
-                        fontSize = 18.sp,
+                        fontSize = smallTextSize.sp,
                         color = Color(0xFF2C3E50),
                         modifier = Modifier.weight(1f)
                     )
@@ -2448,21 +2813,21 @@ fun AdvancedOptionsScreen(
                 }
                 Text(
                     text = "Solo se mostrará la foto del contacto",
-                    fontSize = 14.sp,
+                    fontSize = (14 * scaleFactor).sp,
                     color = Color(0xFF85929E)
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(largePadding))
 
                 // Slider para tamaño de fotos
                 var photoSize by AppSettings.contactPhotoSize
                 Text(
                     text = "Tamaño de fotos: ${photoSize.toInt()} dp",
-                    fontSize = 18.sp,
+                    fontSize = smallTextSize.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color(0xFF2C3E50)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(mediumPadding))
                 Slider(
                     value = photoSize,
                     onValueChange = { photoSize = it },
@@ -2480,12 +2845,80 @@ fun AdvancedOptionsScreen(
                 ) {
                     Text(
                         text = "Pequeño",
-                        fontSize = 12.sp,
+                        fontSize = (12 * scaleFactor).sp,
                         color = Color(0xFF85929E)
                     )
                     Text(
                         text = "Grande",
-                        fontSize = 12.sp,
+                        fontSize = (12 * scaleFactor).sp,
+                        color = Color(0xFF85929E)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(largePadding))
+
+                // Slider para brillo de pantalla
+                var currentBrightness by remember {
+                    mutableFloatStateOf(
+                        try {
+                            Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS).toFloat()
+                        } catch (e: Exception) {
+                            128f
+                        }
+                    )
+                }
+
+                Text(
+                    text = "Brillo de pantalla: ${(currentBrightness / 255 * 100).toInt()}%",
+                    fontSize = smallTextSize.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF2C3E50)
+                )
+                Spacer(modifier = Modifier.height(mediumPadding))
+                Slider(
+                    value = currentBrightness,
+                    onValueChange = { newBrightness ->
+                        currentBrightness = newBrightness
+                        try {
+                            if (Settings.System.canWrite(context)) {
+                                Settings.System.putInt(
+                                    context.contentResolver,
+                                    Settings.System.SCREEN_BRIGHTNESS_MODE,
+                                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                                )
+                                Settings.System.putInt(
+                                    context.contentResolver,
+                                    Settings.System.SCREEN_BRIGHTNESS,
+                                    newBrightness.toInt()
+                                )
+                            } else {
+                                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
+                                intent.data = Uri.parse("package:${context.packageName}")
+                                context.startActivity(intent)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("AdvancedOptions", "Error al cambiar brillo: ${e.message}", e)
+                        }
+                    },
+                    valueRange = 1f..255f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color(0xFFF39C12),
+                        activeTrackColor = Color(0xFFF39C12),
+                        inactiveTrackColor = Color(0xFFE8E8E8)
+                    )
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Oscuro",
+                        fontSize = (12 * scaleFactor).sp,
+                        color = Color(0xFF85929E)
+                    )
+                    Text(
+                        text = "Brillante",
+                        fontSize = (12 * scaleFactor).sp,
                         color = Color(0xFF85929E)
                     )
                 }
