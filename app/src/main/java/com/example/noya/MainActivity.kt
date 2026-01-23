@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import android.provider.ContactsContract
 import android.provider.Settings
 import android.telecom.Call
@@ -69,6 +70,9 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -211,6 +215,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Ocultar la barra de estado del sistema (status bar)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val windowInsetsController = WindowInsetsControllerCompat(window, window.decorView)
+        windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
+        windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
         Log.d("MainActivity", "onCreate llamado")
 
@@ -546,7 +556,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar29",
+                text = "Llamar30",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
