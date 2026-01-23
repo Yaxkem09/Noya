@@ -31,7 +31,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.Battery0Bar
+import androidx.compose.material.icons.filled.Battery2Bar
+import androidx.compose.material.icons.filled.Battery4Bar
+import androidx.compose.material.icons.filled.Battery5Bar
+import androidx.compose.material.icons.filled.Battery6Bar
+import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallMissed
@@ -417,7 +425,7 @@ fun HomeScreen(
     val context = LocalContext.current
     var currentTime by remember { mutableStateOf(getCurrentTime()) }
     var currentDate by remember { mutableStateOf(getCurrentDate()) }
-    var batteryLevel by remember { mutableStateOf(getBatteryLevel(context)) }
+    var batteryStatus by remember { mutableStateOf(getBatteryStatus(context)) }
     var isSilentMode by remember { mutableStateOf(false) }
     var pressProgress by remember { mutableStateOf(0f) }
     var isPressing by remember { mutableStateOf(false) }
@@ -456,7 +464,7 @@ fun HomeScreen(
         while (true) {
             currentTime = getCurrentTime()
             currentDate = getCurrentDate()
-            batteryLevel = getBatteryLevel(context)
+            batteryStatus = getBatteryStatus(context)
             kotlinx.coroutines.delay(1000)
         }
     }
@@ -538,7 +546,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar27",
+                text = "Llamar29",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -614,25 +622,61 @@ fun HomeScreen(
                 .padding(mediumPadding)
                 .align(Alignment.TopEnd)
         ) {
+            // Color según el nivel de batería
+            val batteryColor = when {
+                batteryStatus.level > 80 -> Color(0xFF27AE60) // Verde brillante
+                batteryStatus.level > 50 -> Color(0xFF58D68D) // Verde claro
+                batteryStatus.level > 30 -> Color(0xFFF39C12) // Amarillo/Naranja
+                batteryStatus.level > 15 -> Color(0xFFE67E22) // Naranja
+                else -> Color(0xFFE74C3C) // Rojo
+            }
+
+            // Icono según el nivel de batería
+            val batteryIcon = when {
+                batteryStatus.isCharging -> Icons.Filled.BatteryChargingFull
+                batteryStatus.level > 85 -> Icons.Filled.BatteryFull
+                batteryStatus.level > 70 -> Icons.Filled.Battery6Bar
+                batteryStatus.level > 50 -> Icons.Filled.Battery5Bar
+                batteryStatus.level > 30 -> Icons.Filled.Battery4Bar
+                batteryStatus.level > 15 -> Icons.Filled.Battery2Bar
+                else -> Icons.Filled.Battery0Bar
+            }
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = if (batteryStatus.isCharging) {
+                    Modifier
+                        .background(
+                            color = Color(0xFF27AE60).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                } else {
+                    Modifier
+                }
             ) {
+                // Icono de rayo si está cargando
+                if (batteryStatus.isCharging) {
+                    Icon(
+                        imageVector = Icons.Filled.ElectricBolt,
+                        contentDescription = "Cargando",
+                        modifier = Modifier.size(smallIconSize * 0.7f),
+                        tint = Color(0xFF27AE60)
+                    )
+                }
+
                 Icon(
-                    imageVector = Icons.Filled.BatteryChargingFull,
-                    contentDescription = "Batería",
+                    imageVector = batteryIcon,
+                    contentDescription = if (batteryStatus.isCharging) "Batería cargando" else "Batería",
                     modifier = Modifier.size(smallIconSize),
-                    tint = when {
-                        batteryLevel > 50 -> Color(0xFF58D68D) // Verde
-                        batteryLevel > 20 -> Color(0xFFE67E22) // Naranja
-                        else -> Color(0xFFE74C3C) // Rojo
-                    }
+                    tint = if (batteryStatus.isCharging) Color(0xFF27AE60) else batteryColor
                 )
                 Text(
-                    text = "$batteryLevel%",
+                    text = "${batteryStatus.level}%",
                     fontSize = smallTextSize.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2C3E50)
+                    color = if (batteryStatus.isCharging) Color(0xFF27AE60) else batteryColor
                 )
             }
         }
@@ -2019,6 +2063,17 @@ fun getCurrentTime(): String {
 fun getCurrentDate(): String {
     val sdf = SimpleDateFormat("EEEE, d 'de' MMMM", Locale("es", "ES"))
     return sdf.format(Date())
+}
+
+data class BatteryStatus(val level: Int, val isCharging: Boolean)
+
+fun getBatteryStatus(context: Context): BatteryStatus {
+    val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    val level = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    val status = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+    val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                     status == BatteryManager.BATTERY_STATUS_FULL
+    return BatteryStatus(level, isCharging)
 }
 
 fun getBatteryLevel(context: Context): Int {
