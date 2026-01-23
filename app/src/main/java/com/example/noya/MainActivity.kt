@@ -205,6 +205,7 @@ object ScreenNavigationState {
 
 object AppSettings {
     var hideContactNames = mutableStateOf(false)
+    var hideContactPhotos = mutableStateOf(false)
     var contactPhotoSize = mutableStateOf(95f) // Tamaño por defecto en dp
 }
 
@@ -556,7 +557,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar30",
+                text = "Llamar32",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -790,6 +791,7 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
 fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
     val context = LocalContext.current
     val hideNames by AppSettings.hideContactNames
+    val hidePhotos by AppSettings.hideContactPhotos
     val photoSize by AppSettings.contactPhotoSize
 
     // Dimensiones responsivas
@@ -802,7 +804,8 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
 
     // Calcular altura del card basada en el tamaño de la foto (escalado)
     val scaledPhotoSize = photoSize * scaleFactor
-    val cardHeight = (scaledPhotoSize + 25 * scaleFactor).dp
+    // Cuando se ocultan las fotos, usar una altura fija que permita mostrar nombre y número
+    val cardHeight = if (hidePhotos) (80 * scaleFactor).dp else (scaledPhotoSize + 25 * scaleFactor).dp
 
     Card(
         modifier = Modifier
@@ -823,34 +826,36 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(smallCornerRadius)
         ) {
-            // Foto del contacto - cuadrada con esquinas redondeadas
-            Box(
-                modifier = Modifier
-                    .size(scaledPhotoSize.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
-                    .background(Color(0xFFE8E8E8)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (contact.photoUri != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(contact.photoUri)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "Foto de ${contact.name}",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    // Icono por defecto si no tiene foto
-                    Icon(
-                        imageVector = Icons.Filled.Person,
-                        contentDescription = "Sin foto",
-                        modifier = Modifier.size((scaledPhotoSize * 0.5f).dp),
-                        tint = Color(0xFF85929E)
-                    )
+            // Foto del contacto - cuadrada con esquinas redondeadas (solo si no está oculta)
+            if (!hidePhotos) {
+                Box(
+                    modifier = Modifier
+                        .size(scaledPhotoSize.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
+                        .background(Color(0xFFE8E8E8)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (contact.photoUri != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(contact.photoUri)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "Foto de ${contact.name}",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        // Icono por defecto si no tiene foto
+                        Icon(
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = "Sin foto",
+                            modifier = Modifier.size((scaledPhotoSize * 0.5f).dp),
+                            tint = Color(0xFF85929E)
+                        )
+                    }
                 }
             }
 
@@ -877,8 +882,8 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                 Spacer(modifier = Modifier.weight(1f))
             }
 
-            // Botón de llamar - tamaño proporcional a la foto
-            val buttonSize = (scaledPhotoSize * 0.75f).coerceIn(60f * scaleFactor, 100f * scaleFactor)
+            // Botón de llamar - tamaño proporcional a la foto o fijo si se ocultan las fotos
+            val buttonSize = if (hidePhotos) (60f * scaleFactor) else (scaledPhotoSize * 0.75f).coerceIn(60f * scaleFactor, 100f * scaleFactor)
             Button(
                 onClick = onCallClick,
                 modifier = Modifier.size(buttonSize.dp),
@@ -2366,6 +2371,7 @@ fun MissedCallPanelItem(
 ) {
     val context = LocalContext.current
     val hideNames by AppSettings.hideContactNames
+    val hidePhotos by AppSettings.hideContactPhotos
     val photoSize by AppSettings.contactPhotoSize
 
     // Dimensiones responsivas
@@ -2386,34 +2392,36 @@ fun MissedCallPanelItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(smallCornerRadius)
     ) {
-        // Foto del contacto
-        Box(
-            modifier = Modifier
-                .size(panelPhotoSize.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
-                .background(Color(0xFFFFCDD2)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (callLog.photoUri != null) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(callLog.photoUri)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "Foto de ${callLog.name ?: callLog.phoneNumber}",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                // Icono por defecto si no tiene foto
-                Icon(
-                    imageVector = Icons.Filled.Person,
-                    contentDescription = "Sin foto",
-                    modifier = Modifier.size((panelPhotoSize * 0.5f).dp),
-                    tint = Color(0xFFB71C1C)
-                )
+        // Foto del contacto (solo si no está oculta)
+        if (!hidePhotos) {
+            Box(
+                modifier = Modifier
+                    .size(panelPhotoSize.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
+                    .background(Color(0xFFFFCDD2)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (callLog.photoUri != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(callLog.photoUri)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Foto de ${callLog.name ?: callLog.phoneNumber}",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    // Icono por defecto si no tiene foto
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = "Sin foto",
+                        modifier = Modifier.size((panelPhotoSize * 0.5f).dp),
+                        tint = Color(0xFFB71C1C)
+                    )
+                }
             }
         }
 
@@ -2851,12 +2859,6 @@ fun AdvancedOptionsScreen(
             Column(
                 modifier = Modifier.padding(largePadding)
             ) {
-                Text(
-                    text = "Configuración de Contactos",
-                    fontSize = mediumTextSize.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2C3E50)
-                )
                 Spacer(modifier = Modifier.height(mediumPadding))
 
                 // Checkbox para ocultar nombres
@@ -2883,11 +2885,33 @@ fun AdvancedOptionsScreen(
                         )
                     )
                 }
-                Text(
-                    text = "Solo se mostrará la foto del contacto",
-                    fontSize = (14 * scaleFactor).sp,
-                    color = Color(0xFF85929E)
-                )
+
+                Spacer(modifier = Modifier.height(mediumPadding))
+
+                // Checkbox para ocultar fotos
+                var hidePhotos by AppSettings.hideContactPhotos
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = smallPadding),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Ocultar fotos de contactos",
+                        fontSize = smallTextSize.sp,
+                        color = Color(0xFF2C3E50),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Checkbox(
+                        checked = hidePhotos,
+                        onCheckedChange = { hidePhotos = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFF58D68D),
+                            uncheckedColor = Color(0xFF85929E)
+                        )
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(largePadding))
 
