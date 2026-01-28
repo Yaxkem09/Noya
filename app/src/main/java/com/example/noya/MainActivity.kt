@@ -3,6 +3,7 @@ package com.example.noya
 import android.Manifest
 import android.app.NotificationManager
 import android.app.role.RoleManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -337,9 +338,46 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
     private val _hasContactsPermission = MutableStateFlow(false)
     val hasContactsPermission = _hasContactsPermission.asStateFlow()
 
+    // BroadcastReceiver para detectar cambios de carga instantáneamente
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_POWER_CONNECTED,
+                Intent.ACTION_POWER_DISCONNECTED -> {
+                    // Actualizar estado de batería inmediatamente
+                    _batteryStatus.value = getBatteryStatus(getApplication())
+                }
+            }
+        }
+    }
+
     init {
         startTimeUpdates()
         startBatteryUpdates()
+        registerBatteryReceiver()
+    }
+
+    // Registrar receiver para eventos de carga
+    private fun registerBatteryReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getApplication<Application>().registerReceiver(batteryReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            getApplication<Application>().registerReceiver(batteryReceiver, filter)
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // Desregistrar receiver para evitar memory leaks
+        try {
+            getApplication<Application>().unregisterReceiver(batteryReceiver)
+        } catch (e: Exception) {
+            // Ignorar si ya fue desregistrado
+        }
     }
 
     // Actualizar hora cada segundo
@@ -353,12 +391,12 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Actualizar batería cada 30 segundos
+    // Actualizar nivel de batería cada 60 segundos (el estado de carga se detecta instantáneamente via BroadcastReceiver)
     private fun startBatteryUpdates() {
         viewModelScope.launch {
             while (true) {
                 _batteryStatus.value = getBatteryStatus(getApplication())
-                delay(30000)
+                delay(60000)
             }
         }
     }
@@ -811,7 +849,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar8",
+                text = "Llamar9",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
