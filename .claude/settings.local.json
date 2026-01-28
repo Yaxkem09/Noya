@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ren:*)",
+      "Bash(for f in \"c:/Users/Yaxkem/AndroidStudioProjects/Noya/app/src/main/res/drawable-nodpi/\"*.png)",
+      "Bash(do file \"$f\")",
+      "Bash(done)"
+    ]
+  }
+}

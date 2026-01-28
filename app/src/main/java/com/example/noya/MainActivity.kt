@@ -52,6 +52,8 @@ import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -108,103 +110,174 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 
-// Objeto para dimensiones responsivas basadas en el tamaño de pantalla
-object ResponsiveDimens {
-    // Factores de escala basados en una pantalla de referencia de 360dp de ancho
-    private const val REFERENCE_WIDTH = 360f
+// Clase de datos para almacenar todas las dimensiones pre-calculadas
+data class ResponsiveDimensValues(
+    val scaleFactor: Float,
+    val screenPadding: Dp,
+    val smallPadding: Dp,
+    val mediumPadding: Dp,
+    val largePadding: Dp,
+    val timeTextSize: Float,
+    val dateTextSize: Float,
+    val titleTextSize: Float,
+    val largeTextSize: Float,
+    val mediumTextSize: Float,
+    val normalTextSize: Float,
+    val smallTextSize: Float,
+    val tinyTextSize: Float,
+    val largeButtonHeight: Dp,
+    val mediumButtonHeight: Dp,
+    val smallButtonHeight: Dp,
+    val extraSmallButtonHeight: Dp,
+    val largeIconSize: Dp,
+    val mediumIconSize: Dp,
+    val smallIconSize: Dp,
+    val contactPhotoSize: Dp,
+    val callPhotoSize: Dp,
+    val gridImageSize: Dp,
+    val cornerRadius: Dp,
+    val largeCornerRadius: Dp,
+    val smallCornerRadius: Dp,
+    val settingsButtonSize: Dp
+)
 
-    @Composable
-    fun getScaleFactor(): Float {
-        val configuration = LocalConfiguration.current
-        val screenWidth = configuration.screenWidthDp.toFloat()
-        return (screenWidth / REFERENCE_WIDTH).coerceIn(0.8f, 1.5f)
+// CompositionLocal para las dimensiones responsivas
+private val LocalResponsiveDimens = staticCompositionLocalOf<ResponsiveDimensValues> {
+    error("ResponsiveDimens not provided")
+}
+
+// Calcular dimensiones una sola vez
+@Composable
+private fun calculateResponsiveDimens(): ResponsiveDimensValues {
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.toFloat()
+    val scale = (screenWidth / 360f).coerceIn(0.8f, 1.5f)
+
+    return ResponsiveDimensValues(
+        scaleFactor = scale,
+        screenPadding = (24 * scale).dp,
+        smallPadding = (8 * scale).dp,
+        mediumPadding = (16 * scale).dp,
+        largePadding = (24 * scale).dp,
+        timeTextSize = 56 * scale,
+        dateTextSize = 24 * scale,
+        titleTextSize = 32 * scale,
+        largeTextSize = 28 * scale,
+        mediumTextSize = 24 * scale,
+        normalTextSize = 22 * scale,
+        smallTextSize = 18 * scale,
+        tinyTextSize = 16 * scale,
+        largeButtonHeight = (100 * scale).dp,
+        mediumButtonHeight = (80 * scale).dp,
+        smallButtonHeight = (60 * scale).dp,
+        extraSmallButtonHeight = (48 * scale).dp,
+        largeIconSize = (48 * scale).dp,
+        mediumIconSize = (32 * scale).dp,
+        smallIconSize = (28 * scale).dp,
+        contactPhotoSize = (150 * scale).dp,
+        callPhotoSize = (150 * scale).dp,
+        gridImageSize = (110 * scale).dp,
+        cornerRadius = (16 * scale).dp,
+        largeCornerRadius = (20 * scale).dp,
+        smallCornerRadius = (12 * scale).dp,
+        settingsButtonSize = (60 * scale).dp
+    )
+}
+
+// Provider para las dimensiones
+@Composable
+fun ProvideResponsiveDimens(content: @Composable () -> Unit) {
+    val dimens = calculateResponsiveDimens()
+    CompositionLocalProvider(LocalResponsiveDimens provides dimens) {
+        content()
     }
+}
 
-    // Padding general
-    @Composable
-    fun screenPadding(): Dp = (24 * getScaleFactor()).dp
-
-    @Composable
-    fun smallPadding(): Dp = (8 * getScaleFactor()).dp
-
-    @Composable
-    fun mediumPadding(): Dp = (16 * getScaleFactor()).dp
+// Objeto para dimensiones responsivas - ahora lee del CompositionLocal (una sola lectura)
+object ResponsiveDimens {
+    val current: ResponsiveDimensValues
+        @Composable get() = LocalResponsiveDimens.current
 
     @Composable
-    fun largePadding(): Dp = (24 * getScaleFactor()).dp
-
-    // Tamaños de texto (en sp, pero escalados)
-    @Composable
-    fun timeTextSize(): Float = 56 * getScaleFactor()
+    fun getScaleFactor(): Float = current.scaleFactor
 
     @Composable
-    fun dateTextSize(): Float = 24 * getScaleFactor()
+    fun screenPadding(): Dp = current.screenPadding
 
     @Composable
-    fun titleTextSize(): Float = 32 * getScaleFactor()
+    fun smallPadding(): Dp = current.smallPadding
 
     @Composable
-    fun largeTextSize(): Float = 28 * getScaleFactor()
+    fun mediumPadding(): Dp = current.mediumPadding
 
     @Composable
-    fun mediumTextSize(): Float = 24 * getScaleFactor()
+    fun largePadding(): Dp = current.largePadding
 
     @Composable
-    fun normalTextSize(): Float = 22 * getScaleFactor()
+    fun timeTextSize(): Float = current.timeTextSize
 
     @Composable
-    fun smallTextSize(): Float = 18 * getScaleFactor()
+    fun dateTextSize(): Float = current.dateTextSize
 
     @Composable
-    fun tinyTextSize(): Float = 16 * getScaleFactor()
-
-    // Tamaños de botones
-    @Composable
-    fun largeButtonHeight(): Dp = (100 * getScaleFactor()).dp
+    fun titleTextSize(): Float = current.titleTextSize
 
     @Composable
-    fun mediumButtonHeight(): Dp = (80 * getScaleFactor()).dp
+    fun largeTextSize(): Float = current.largeTextSize
 
     @Composable
-    fun smallButtonHeight(): Dp = (60 * getScaleFactor()).dp
+    fun mediumTextSize(): Float = current.mediumTextSize
 
     @Composable
-    fun extraSmallButtonHeight(): Dp = (48 * getScaleFactor()).dp
-
-    // Tamaños de iconos
-    @Composable
-    fun largeIconSize(): Dp = (48 * getScaleFactor()).dp
+    fun normalTextSize(): Float = current.normalTextSize
 
     @Composable
-    fun mediumIconSize(): Dp = (32 * getScaleFactor()).dp
+    fun smallTextSize(): Float = current.smallTextSize
 
     @Composable
-    fun smallIconSize(): Dp = (28 * getScaleFactor()).dp
-
-    // Tamaños de fotos/avatares
-    @Composable
-    fun contactPhotoSize(): Dp = (150 * getScaleFactor()).dp
+    fun tinyTextSize(): Float = current.tinyTextSize
 
     @Composable
-    fun callPhotoSize(): Dp = (150 * getScaleFactor()).dp
-
-    // Tamaño del botón de imagen en grid
-    @Composable
-    fun gridImageSize(): Dp = (110 * getScaleFactor()).dp
-
-    // Corner radius
-    @Composable
-    fun cornerRadius(): Dp = (16 * getScaleFactor()).dp
+    fun largeButtonHeight(): Dp = current.largeButtonHeight
 
     @Composable
-    fun largeCornerRadius(): Dp = (20 * getScaleFactor()).dp
+    fun mediumButtonHeight(): Dp = current.mediumButtonHeight
 
     @Composable
-    fun smallCornerRadius(): Dp = (12 * getScaleFactor()).dp
+    fun smallButtonHeight(): Dp = current.smallButtonHeight
 
-    // Settings button size
     @Composable
-    fun settingsButtonSize(): Dp = (60 * getScaleFactor()).dp
+    fun extraSmallButtonHeight(): Dp = current.extraSmallButtonHeight
+
+    @Composable
+    fun largeIconSize(): Dp = current.largeIconSize
+
+    @Composable
+    fun mediumIconSize(): Dp = current.mediumIconSize
+
+    @Composable
+    fun smallIconSize(): Dp = current.smallIconSize
+
+    @Composable
+    fun contactPhotoSize(): Dp = current.contactPhotoSize
+
+    @Composable
+    fun callPhotoSize(): Dp = current.callPhotoSize
+
+    @Composable
+    fun gridImageSize(): Dp = current.gridImageSize
+
+    @Composable
+    fun cornerRadius(): Dp = current.cornerRadius
+
+    @Composable
+    fun largeCornerRadius(): Dp = current.largeCornerRadius
+
+    @Composable
+    fun smallCornerRadius(): Dp = current.smallCornerRadius
+
+    @Composable
+    fun settingsButtonSize(): Dp = current.settingsButtonSize
 }
 
 object IncomingCallState {
@@ -219,47 +292,50 @@ object ScreenNavigationState {
 object AppSettings {
     var hideContactNames = mutableStateOf(false)
     var hideContactPhotos = mutableStateOf(false)
-    var contactPhotoSize = mutableStateOf(95f) // Tamaño por defecto en dp
+    var contactPhotoSize = mutableFloatStateOf(95f) // Tamaño por defecto en dp
 }
 
 // ViewModel centralizado para manejo de estado
 class NoyaViewModel(application: Application) : AndroidViewModel(application) {
 
+    // Flag para evitar múltiples loops de actualización
+    private var missedCallsUpdatesStarted = false
+
     // Estado de contactos
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
-    val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
+    val contacts = _contacts.asStateFlow()
 
     private val _isLoadingContacts = MutableStateFlow(true)
-    val isLoadingContacts: StateFlow<Boolean> = _isLoadingContacts.asStateFlow()
+    val isLoadingContacts = _isLoadingContacts.asStateFlow()
 
     // Estado de llamadas perdidas
     private val _missedCalls = MutableStateFlow<List<CallLog>>(emptyList())
-    val missedCalls: StateFlow<List<CallLog>> = _missedCalls.asStateFlow()
+    val missedCalls = _missedCalls.asStateFlow()
 
     private val _isLoadingMissedCalls = MutableStateFlow(true)
-    val isLoadingMissedCalls: StateFlow<Boolean> = _isLoadingMissedCalls.asStateFlow()
+    val isLoadingMissedCalls = _isLoadingMissedCalls.asStateFlow()
 
     // Estado de batería
     private val _batteryStatus = MutableStateFlow(BatteryStatus(0, false))
-    val batteryStatus: StateFlow<BatteryStatus> = _batteryStatus.asStateFlow()
+    val batteryStatus = _batteryStatus.asStateFlow()
 
     // Hora y fecha
     private val _currentTime = MutableStateFlow(getCurrentTime())
-    val currentTime: StateFlow<String> = _currentTime.asStateFlow()
+    val currentTime = _currentTime.asStateFlow()
 
     private val _currentDate = MutableStateFlow(getCurrentDate())
-    val currentDate: StateFlow<String> = _currentDate.asStateFlow()
+    val currentDate = _currentDate.asStateFlow()
 
     // Modo silencio
     private val _isSilentMode = MutableStateFlow(false)
-    val isSilentMode: StateFlow<Boolean> = _isSilentMode.asStateFlow()
+    val isSilentMode = _isSilentMode.asStateFlow()
 
     // Flag para indicar si tiene permisos
     private val _hasCallLogPermission = MutableStateFlow(false)
-    val hasCallLogPermission: StateFlow<Boolean> = _hasCallLogPermission.asStateFlow()
+    val hasCallLogPermission = _hasCallLogPermission.asStateFlow()
 
     private val _hasContactsPermission = MutableStateFlow(false)
-    val hasContactsPermission: StateFlow<Boolean> = _hasContactsPermission.asStateFlow()
+    val hasContactsPermission = _hasContactsPermission.asStateFlow()
 
     init {
         startTimeUpdates()
@@ -287,13 +363,19 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Cargar contactos
+    // Cargar contactos - solo si no están ya cargados
     fun loadContacts(hasPermission: Boolean) {
         if (!hasPermission) {
             _isLoadingContacts.value = false
             return
         }
         _hasContactsPermission.value = true
+
+        // Si ya tenemos contactos cargados, no recargar
+        if (_contacts.value.isNotEmpty()) {
+            _isLoadingContacts.value = false
+            return
+        }
 
         viewModelScope.launch {
             _isLoadingContacts.value = true
@@ -305,13 +387,19 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Cargar llamadas perdidas
+    // Cargar llamadas perdidas - solo si no están ya cargadas
     fun loadMissedCalls(hasPermission: Boolean) {
         if (!hasPermission) {
             _isLoadingMissedCalls.value = false
             return
         }
         _hasCallLogPermission.value = true
+
+        // Si ya tenemos llamadas cargadas, no recargar
+        if (_missedCalls.value.isNotEmpty()) {
+            _isLoadingMissedCalls.value = false
+            return
+        }
 
         viewModelScope.launch {
             _isLoadingMissedCalls.value = true
@@ -359,8 +447,11 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Iniciar actualización periódica de llamadas perdidas (cada 30 segundos)
+    // Iniciar actualización periódica de llamadas perdidas - solo una vez
     fun startMissedCallsUpdates() {
+        if (missedCallsUpdatesStarted) return
+        missedCallsUpdatesStarted = true
+
         viewModelScope.launch {
             while (true) {
                 delay(30000)
@@ -478,21 +569,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStop() {
-        super.onStop()
-        Log.d("MainActivity", "onStop llamado - regresando a pantalla principal")
-        // Navegar a home cuando la app se pone en segundo plano (pantalla suspendida)
-        ScreenNavigationState.shouldNavigateToHome.value = true
-    }
-
+    // Solo navegar a home cuando la app VUELVE de estar en segundo plano
+    // No usar onStop() porque se dispara durante gestos de navegación parciales
     override fun onRestart() {
         super.onRestart()
         Log.d("MainActivity", "onRestart llamado - navegando a home")
-        // Navegar a home cuando la app vuelve de estar suspendida
         ScreenNavigationState.shouldNavigateToHome.value = true
     }
 }
 
+@Stable
 data class Contact(
     val id: String,
     val name: String,
@@ -500,6 +586,7 @@ data class Contact(
     val photoUri: String? = null
 )
 
+@Stable
 data class CallLog(
     val id: String,
     val phoneNumber: String,
@@ -511,6 +598,14 @@ data class CallLog(
 
 @Composable
 fun MainScreen() {
+    // Proveer dimensiones responsivas una sola vez para toda la app
+    ProvideResponsiveDimens {
+        MainScreenContent()
+    }
+}
+
+@Composable
+private fun MainScreenContent() {
     val context = LocalContext.current
     // ViewModel compartido entre todas las pantallas
     val viewModel: NoyaViewModel = viewModel()
@@ -625,7 +720,7 @@ fun HomeScreen(
     val hasCallLogPermission by viewModel.hasCallLogPermission.collectAsStateWithLifecycle()
 
     // Estados locales de UI
-    var pressProgress by remember { mutableStateOf(0f) }
+    var pressProgress by remember { mutableFloatStateOf(0f) }
     var isPressing by remember { mutableStateOf(false) }
 
     // Cargar llamadas perdidas al iniciar
@@ -716,7 +811,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar4",
+                text = "Llamar8",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -1086,7 +1181,7 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
 
 // Caché de contactos con timestamp para invalidación
 private object ContactsCache {
-    var contacts: List<Contact> = emptyList()
+    var contacts = emptyList<Contact>()
     var lastUpdate: Long = 0
     const val CACHE_DURATION_MS = 60_000L // 60 segundos
 
@@ -1839,7 +1934,7 @@ fun NewContactScreen(
                         contentAlignment = Alignment.CenterStart
                     ) {
                         Text(
-                            text = if (phoneNumber.isEmpty()) "Número de teléfono" else phoneNumber,
+                            text = phoneNumber.ifEmpty { "Número de teléfono" },
                             fontSize = largeTextSize.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (phoneNumber.isEmpty()) Color(0xFF85929E) else Color(0xFF2C3E50) // Gris suave o azul oscuro
