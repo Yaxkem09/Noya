@@ -86,8 +86,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.CachePolicy
+import coil.size.Size
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import com.example.noya.ui.theme.NoyaTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -207,6 +220,159 @@ object AppSettings {
     var hideContactNames = mutableStateOf(false)
     var hideContactPhotos = mutableStateOf(false)
     var contactPhotoSize = mutableStateOf(95f) // Tamaño por defecto en dp
+}
+
+// ViewModel centralizado para manejo de estado
+class NoyaViewModel(application: Application) : AndroidViewModel(application) {
+
+    // Estado de contactos
+    private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
+    val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
+
+    private val _isLoadingContacts = MutableStateFlow(true)
+    val isLoadingContacts: StateFlow<Boolean> = _isLoadingContacts.asStateFlow()
+
+    // Estado de llamadas perdidas
+    private val _missedCalls = MutableStateFlow<List<CallLog>>(emptyList())
+    val missedCalls: StateFlow<List<CallLog>> = _missedCalls.asStateFlow()
+
+    private val _isLoadingMissedCalls = MutableStateFlow(true)
+    val isLoadingMissedCalls: StateFlow<Boolean> = _isLoadingMissedCalls.asStateFlow()
+
+    // Estado de batería
+    private val _batteryStatus = MutableStateFlow(BatteryStatus(0, false))
+    val batteryStatus: StateFlow<BatteryStatus> = _batteryStatus.asStateFlow()
+
+    // Hora y fecha
+    private val _currentTime = MutableStateFlow(getCurrentTime())
+    val currentTime: StateFlow<String> = _currentTime.asStateFlow()
+
+    private val _currentDate = MutableStateFlow(getCurrentDate())
+    val currentDate: StateFlow<String> = _currentDate.asStateFlow()
+
+    // Modo silencio
+    private val _isSilentMode = MutableStateFlow(false)
+    val isSilentMode: StateFlow<Boolean> = _isSilentMode.asStateFlow()
+
+    // Flag para indicar si tiene permisos
+    private val _hasCallLogPermission = MutableStateFlow(false)
+    val hasCallLogPermission: StateFlow<Boolean> = _hasCallLogPermission.asStateFlow()
+
+    private val _hasContactsPermission = MutableStateFlow(false)
+    val hasContactsPermission: StateFlow<Boolean> = _hasContactsPermission.asStateFlow()
+
+    init {
+        startTimeUpdates()
+        startBatteryUpdates()
+    }
+
+    // Actualizar hora cada segundo
+    private fun startTimeUpdates() {
+        viewModelScope.launch {
+            while (true) {
+                _currentTime.value = getCurrentTime()
+                _currentDate.value = getCurrentDate()
+                delay(1000)
+            }
+        }
+    }
+
+    // Actualizar batería cada 30 segundos
+    private fun startBatteryUpdates() {
+        viewModelScope.launch {
+            while (true) {
+                _batteryStatus.value = getBatteryStatus(getApplication())
+                delay(30000)
+            }
+        }
+    }
+
+    // Cargar contactos
+    fun loadContacts(hasPermission: Boolean) {
+        if (!hasPermission) {
+            _isLoadingContacts.value = false
+            return
+        }
+        _hasContactsPermission.value = true
+
+        viewModelScope.launch {
+            _isLoadingContacts.value = true
+            val loadedContacts = withContext(Dispatchers.IO) {
+                getContacts(getApplication())
+            }
+            _contacts.value = loadedContacts
+            _isLoadingContacts.value = false
+        }
+    }
+
+    // Cargar llamadas perdidas
+    fun loadMissedCalls(hasPermission: Boolean) {
+        if (!hasPermission) {
+            _isLoadingMissedCalls.value = false
+            return
+        }
+        _hasCallLogPermission.value = true
+
+        viewModelScope.launch {
+            _isLoadingMissedCalls.value = true
+            val calls = withContext(Dispatchers.IO) {
+                getMissedCalls(getApplication())
+            }
+            _missedCalls.value = calls
+            _isLoadingMissedCalls.value = false
+        }
+    }
+
+    // Refrescar llamadas perdidas (llamar después de una llamada)
+    fun refreshMissedCalls() {
+        if (!_hasCallLogPermission.value) return
+
+        viewModelScope.launch {
+            val calls = withContext(Dispatchers.IO) {
+                getMissedCalls(getApplication())
+            }
+            _missedCalls.value = calls
+        }
+    }
+
+    // Refrescar contactos (llamar después de guardar un contacto)
+    fun refreshContacts() {
+        if (!_hasContactsPermission.value) return
+
+        viewModelScope.launch {
+            val loadedContacts = withContext(Dispatchers.IO) {
+                getContacts(getApplication(), forceRefresh = true)
+            }
+            _contacts.value = loadedContacts
+        }
+    }
+
+    // Actualizar modo silencio
+    fun updateSilentMode(isSilent: Boolean) {
+        _isSilentMode.value = isSilent
+    }
+
+    // Actualizar batería manualmente
+    fun updateBattery() {
+        viewModelScope.launch {
+            _batteryStatus.value = getBatteryStatus(getApplication())
+        }
+    }
+
+    // Iniciar actualización periódica de llamadas perdidas (cada 30 segundos)
+    fun startMissedCallsUpdates() {
+        viewModelScope.launch {
+            while (true) {
+                delay(30000)
+                if (_hasCallLogPermission.value) {
+                    val calls = withContext(Dispatchers.IO) {
+                        getMissedCalls(getApplication())
+                    }
+                    _missedCalls.value = calls
+                }
+            }
+        }
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -346,6 +512,9 @@ data class CallLog(
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
+    // ViewModel compartido entre todas las pantallas
+    val viewModel: NoyaViewModel = viewModel()
+
     var currentScreen by remember { mutableStateOf("home") }
     var activeCallContact by remember { mutableStateOf<Contact?>(null) }
     val incomingCallerNumber by IncomingCallState.incomingCallNumber
@@ -366,6 +535,8 @@ fun MainScreen() {
             currentScreen = "home"
             activeCallContact = null
             IncomingCallState.callEnded.value = false
+            // Refrescar llamadas perdidas al terminar una llamada
+            viewModel.refreshMissedCalls()
         }
     }
 
@@ -387,17 +558,20 @@ fun MainScreen() {
             onCallContact = { contact ->
                 activeCallContact = contact
                 currentScreen = "activeCall"
-            }
+            },
+            viewModel = viewModel
         )
         "contacts" -> ContactsScreen(
             onNavigateBack = { currentScreen = "home" },
             onCallStarted = { contact ->
                 activeCallContact = contact
                 currentScreen = "activeCall"
-            }
+            },
+            viewModel = viewModel
         )
         "newContact" -> NewContactScreen(
-            onNavigateBack = { currentScreen = "advancedOptions" }
+            onNavigateBack = { currentScreen = "advancedOptions" },
+            viewModel = viewModel
         )
         "advancedOptions" -> AdvancedOptionsScreen(
             onNavigateBack = { currentScreen = "home" },
@@ -416,12 +590,18 @@ fun MainScreen() {
                 CallManager.rejectCall()
                 IncomingCallState.incomingCallNumber.value = null
                 currentScreen = "home"
+                // Refrescar llamadas perdidas al rechazar
+                viewModel.refreshMissedCalls()
             }
         )
         "activeCall" -> activeCallContact?.let { contact ->
             ActiveCallScreen(
                 contact = contact,
-                onEndCall = { currentScreen = "home" }
+                onEndCall = {
+                    currentScreen = "home"
+                    // Refrescar llamadas perdidas al terminar
+                    viewModel.refreshMissedCalls()
+                }
             )
         }
     }
@@ -431,53 +611,32 @@ fun MainScreen() {
 fun HomeScreen(
     onNavigateToContacts: () -> Unit,
     onNavigateToAdvancedOptions: () -> Unit,
-    onCallContact: (Contact) -> Unit
+    onCallContact: (Contact) -> Unit,
+    viewModel: NoyaViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    var currentTime by remember { mutableStateOf(getCurrentTime()) }
-    var currentDate by remember { mutableStateOf(getCurrentDate()) }
-    var batteryStatus by remember { mutableStateOf(getBatteryStatus(context)) }
-    var isSilentMode by remember { mutableStateOf(false) }
+
+    // Estados del ViewModel usando collectAsState
+    val currentTime by viewModel.currentTime.collectAsStateWithLifecycle()
+    val currentDate by viewModel.currentDate.collectAsStateWithLifecycle()
+    val batteryStatus by viewModel.batteryStatus.collectAsStateWithLifecycle()
+    val isSilentMode by viewModel.isSilentMode.collectAsStateWithLifecycle()
+    val missedCalls by viewModel.missedCalls.collectAsStateWithLifecycle()
+    val hasCallLogPermission by viewModel.hasCallLogPermission.collectAsStateWithLifecycle()
+
+    // Estados locales de UI
     var pressProgress by remember { mutableStateOf(0f) }
     var isPressing by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-    var missedCalls by remember { mutableStateOf<List<CallLog>>(emptyList()) }
-    var hasCallLogPermission by remember { mutableStateOf(false) }
 
-    // Contador para forzar actualización de llamadas perdidas
-    var refreshTrigger by remember { mutableStateOf(0) }
-
-    // Cargar llamadas perdidas (se actualiza cuando cambia refreshTrigger)
-    LaunchedEffect(Unit, refreshTrigger) {
+    // Cargar llamadas perdidas al iniciar
+    LaunchedEffect(Unit) {
         val readGranted = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.READ_CALL_LOG
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (readGranted) {
-            hasCallLogPermission = true
-            missedCalls = getMissedCalls(context)
-        }
-    }
-
-    // Actualizar llamadas perdidas periódicamente (cada 5 segundos) para detectar llamadas devueltas
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(5000) // Actualizar cada 5 segundos
-            if (hasCallLogPermission) {
-                missedCalls = getMissedCalls(context)
-            }
-        }
-    }
-
-    // Actualizar la hora y batería cada segundo
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = getCurrentTime()
-            currentDate = getCurrentDate()
-            batteryStatus = getBatteryStatus(context)
-            kotlinx.coroutines.delay(1000)
-        }
+        viewModel.loadMissedCalls(readGranted)
+        viewModel.startMissedCallsUpdates()
     }
 
     // Manejar el progreso de la presión
@@ -557,7 +716,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar32",
+                text = "Llamar4",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -569,7 +728,7 @@ fun HomeScreen(
                 imageRes = if (isSilentMode) R.drawable.ic_btn_sonido else R.drawable.ic_btn_silenciar,
                 onClick = {
                     toggleSilentMode(context) { newMode ->
-                        isSilentMode = newMode
+                        viewModel.updateSilentMode(newMode)
                     }
                 },
                 backgroundColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2),
@@ -695,10 +854,17 @@ fun HomeScreen(
 }
 
 @Composable
-fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit) {
+fun ContactsScreen(
+    onNavigateBack: () -> Unit,
+    onCallStarted: (Contact) -> Unit,
+    viewModel: NoyaViewModel = viewModel()
+) {
     val context = LocalContext.current
-    var contacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
-    var hasPermission by remember { mutableStateOf(false) }
+
+    // Estados del ViewModel
+    val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoadingContacts.collectAsStateWithLifecycle()
+    val hasPermission by viewModel.hasContactsPermission.collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -707,8 +873,7 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
         val callPhoneGranted = permissions[Manifest.permission.CALL_PHONE] ?: false
 
         if (readContactsGranted && callPhoneGranted) {
-            hasPermission = true
-            contacts = getContacts(context)
+            viewModel.loadContacts(true)
         } else {
             Toast.makeText(context, "Se necesitan permisos para ver contactos y realizar llamadas", Toast.LENGTH_LONG).show()
         }
@@ -726,8 +891,7 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
         ) == PackageManager.PERMISSION_GRANTED
 
         if (readGranted && callGranted) {
-            hasPermission = true
-            contacts = getContacts(context)
+            viewModel.loadContacts(true)
         } else {
             permissionLauncher.launch(
                 arrayOf(
@@ -760,26 +924,39 @@ fun ContactsScreen(onNavigateBack: () -> Unit, onCallStarted: (Contact) -> Unit)
 
         // Lista de contactos
         if (hasPermission) {
-            if (contacts.isEmpty()) {
-                Text(
-                    text = "No hay contactos",
-                    fontSize = mediumTextSize.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(mediumPadding)
-                ) {
-                    items(contacts) { contact ->
-                        ContactItem(
-                            contact = contact,
-                            onCallClick = {
-                                onCallStarted(contact)
-                            }
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF58D68D)
                         )
+                    }
+                }
+                contacts.isEmpty() -> {
+                    Text(
+                        text = "No hay contactos",
+                        fontSize = mediumTextSize.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(mediumPadding)
+                    ) {
+                        items(contacts, key = { it.id }) { contact ->
+                            ContactItem(
+                                contact = contact,
+                                onCallClick = {
+                                    onCallStarted(contact)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -840,6 +1017,9 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
                             model = ImageRequest.Builder(context)
                                 .data(contact.photoUri)
                                 .crossfade(true)
+                                .size(150) // Limitar tamaño de decodificación
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
                                 .build(),
                             contentDescription = "Foto de ${contact.name}",
                             modifier = Modifier
@@ -904,13 +1084,45 @@ fun ContactItem(contact: Contact, onCallClick: () -> Unit) {
     }
 }
 
-fun getContacts(context: Context): List<Contact> {
+// Caché de contactos con timestamp para invalidación
+private object ContactsCache {
+    var contacts: List<Contact> = emptyList()
+    var lastUpdate: Long = 0
+    const val CACHE_DURATION_MS = 60_000L // 60 segundos
+
+    fun isValid(): Boolean {
+        return contacts.isNotEmpty() &&
+            (System.currentTimeMillis() - lastUpdate) < CACHE_DURATION_MS
+    }
+
+    fun update(newContacts: List<Contact>) {
+        contacts = newContacts
+        lastUpdate = System.currentTimeMillis()
+    }
+
+    fun invalidate() {
+        contacts = emptyList()
+        lastUpdate = 0
+    }
+}
+
+fun getContacts(context: Context, forceRefresh: Boolean = false): List<Contact> {
+    // Retornar caché si es válido y no se fuerza actualización
+    if (!forceRefresh && ContactsCache.isValid()) {
+        return ContactsCache.contacts
+    }
+
     val contacts = mutableListOf<Contact>()
     val seenNumbers = mutableSetOf<String>() // Para evitar duplicados
 
     val cursor: Cursor? = context.contentResolver.query(
         ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-        null,
+        arrayOf(
+            ContactsContract.CommonDataKinds.Phone._ID,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER,
+            ContactsContract.CommonDataKinds.Phone.PHOTO_URI
+        ),
         null,
         null,
         ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
@@ -937,6 +1149,9 @@ fun getContacts(context: Context): List<Contact> {
             }
         }
     }
+
+    // Actualizar caché
+    ContactsCache.update(contacts)
 
     return contacts
 }
@@ -1002,10 +1217,12 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     var hasEnded by remember { mutableStateOf(false) }
     var contactPhoto by remember { mutableStateOf<String?>(contact.photoUri) }
 
-    // Obtener la foto del contacto si no la tenemos
+    // Obtener la foto del contacto si no la tenemos (en IO thread)
     LaunchedEffect(contact.phoneNumber) {
         if (contactPhoto == null) {
-            val (_, photoUri) = getContactInfoFromNumber(context, contact.phoneNumber)
+            val (_, photoUri) = withContext(Dispatchers.IO) {
+                getContactInfoFromNumber(context, contact.phoneNumber)
+            }
             contactPhoto = photoUri
         }
     }
@@ -1026,30 +1243,21 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         }
     }
 
-    // Verificar periódicamente si la llamada sigue activa
+    // Verificación periódica: si no hay llamada activa después de un tiempo, cerrar
+    // Solo para llamadas entrantes que fueron aceptadas - las salientes tardan en establecerse
     LaunchedEffect(Unit) {
-        while (!hasEnded) {
-            kotlinx.coroutines.delay(500) // Verificar cada medio segundo
+        // Para llamadas salientes, dar más tiempo para que se establezca
+        val isOutgoingCall = contact.id != "incoming"
+        val waitTime = if (isOutgoingCall) 5000L else 500L
 
-            val currentCall = CallManager.ongoingCall
-            if (currentCall == null && !hasEnded) {
-                Log.d("ActiveCallScreen", "Llamada ya no existe - cerrando pantalla")
-                hasEnded = true
-                audioManager.isSpeakerphoneOn = false
-                onEndCall()
-                return@LaunchedEffect
-            }
+        delay(waitTime)
 
-            // Verificar el estado de la llamada directamente
-            currentCall?.let { call ->
-                if (call.state == Call.STATE_DISCONNECTED && !hasEnded) {
-                    Log.d("ActiveCallScreen", "Llamada desconectada (verificación periódica) - cerrando pantalla")
-                    hasEnded = true
-                    audioManager.isSpeakerphoneOn = false
-                    onEndCall()
-                    return@LaunchedEffect
-                }
-            }
+        val currentCall = CallManager.ongoingCall
+        if (currentCall == null && !hasEnded) {
+            Log.d("ActiveCallScreen", "No hay llamada activa después de esperar - cerrando pantalla")
+            hasEnded = true
+            audioManager.isSpeakerphoneOn = false
+            onEndCall()
         }
     }
 
@@ -1137,6 +1345,9 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                     model = ImageRequest.Builder(context)
                         .data(contactPhoto)
                         .crossfade(true)
+                        .size(200) // Limitar tamaño de decodificación
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
                         .build(),
                     contentDescription = "Foto de ${contact.name}",
                     modifier = Modifier
@@ -1296,21 +1507,24 @@ fun IncomingCallScreen(
     var callerPhoto by remember { mutableStateOf<String?>(null) }
     var hasEnded by remember { mutableStateOf(false) }
 
-    // Buscar el nombre y foto del contacto
+    // Buscar el nombre y foto del contacto (en IO thread)
     LaunchedEffect(callerNumber) {
-        val (name, photoUri) = getContactInfoFromNumber(context, callerNumber)
+        val (name, photoUri) = withContext(Dispatchers.IO) {
+            getContactInfoFromNumber(context, callerNumber)
+        }
         callerName = name
         callerPhoto = photoUri
     }
 
-    // Monitorear si la llamada fue cancelada
+    // Monitorear si la llamada fue cancelada via callback
     LaunchedEffect(Unit) {
         CallManager.setCallStateCallback { state ->
             Log.d("IncomingCallScreen", "Estado de llamada actualizado: $state")
 
-            // Si la llamada se desconectó antes de contestar
-            if (state == Call.STATE_DISCONNECTED && !hasEnded) {
-                Log.d("IncomingCallScreen", "Llamada cancelada - cerrando pantalla")
+            // Si la llamada se desconectó o cambió de estado antes de contestar
+            if (!hasEnded && (state == Call.STATE_DISCONNECTED ||
+                (state != Call.STATE_RINGING && state != Call.STATE_ACTIVE))) {
+                Log.d("IncomingCallScreen", "Llamada cancelada/terminada (estado: $state) - cerrando pantalla")
                 hasEnded = true
                 IncomingCallState.incomingCallNumber.value = null
                 IncomingCallState.callEnded.value = true
@@ -1318,31 +1532,16 @@ fun IncomingCallScreen(
         }
     }
 
-    // Verificar periódicamente si la llamada sigue sonando
+    // Verificación inicial: si no hay llamada entrante al mostrar la pantalla
     LaunchedEffect(Unit) {
-        while (!hasEnded) {
-            kotlinx.coroutines.delay(500) // Verificar cada medio segundo
+        delay(100) // Pequeño margen para que se establezca el estado
 
-            val currentCall = CallManager.ongoingCall
-            if (currentCall == null && !hasEnded) {
-                Log.d("IncomingCallScreen", "Llamada ya no existe - cerrando pantalla")
-                hasEnded = true
-                IncomingCallState.incomingCallNumber.value = null
-                IncomingCallState.callEnded.value = true
-                return@LaunchedEffect
-            }
-
-            // Verificar el estado de la llamada directamente
-            currentCall?.let { call ->
-                // Si ya no está timbrando y no fue aceptada, significa que se canceló
-                if (call.state != Call.STATE_RINGING && call.state != Call.STATE_ACTIVE && !hasEnded) {
-                    Log.d("IncomingCallScreen", "Llamada dejó de timbrar (estado: ${call.state}) - cerrando pantalla")
-                    hasEnded = true
-                    IncomingCallState.incomingCallNumber.value = null
-                    IncomingCallState.callEnded.value = true
-                    return@LaunchedEffect
-                }
-            }
+        val currentCall = CallManager.ongoingCall
+        if (currentCall == null && !hasEnded) {
+            Log.d("IncomingCallScreen", "No hay llamada activa al entrar - cerrando pantalla")
+            hasEnded = true
+            IncomingCallState.incomingCallNumber.value = null
+            IncomingCallState.callEnded.value = true
         }
     }
 
@@ -1399,6 +1598,9 @@ fun IncomingCallScreen(
                     model = ImageRequest.Builder(context)
                         .data(callerPhoto)
                         .crossfade(true)
+                        .size(200) // Limitar tamaño de decodificación
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
                         .build(),
                     contentDescription = "Foto de ${callerName ?: callerNumber}",
                     modifier = Modifier
@@ -1517,7 +1719,10 @@ fun IncomingCallScreen(
 }
 
 @Composable
-fun NewContactScreen(onNavigateBack: () -> Unit) {
+fun NewContactScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: NoyaViewModel = viewModel()
+) {
     val context = LocalContext.current
     var phoneNumber by remember { mutableStateOf("") }
     var contactName by remember { mutableStateOf("") }
@@ -1732,7 +1937,12 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                     ) {
                         if (selectedPhotoUri != null) {
                             AsyncImage(
-                                model = selectedPhotoUri,
+                                model = ImageRequest.Builder(context)
+                                    .data(selectedPhotoUri)
+                                    .crossfade(true)
+                                    .size(150)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .build(),
                                 contentDescription = "Foto del contacto",
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -1778,7 +1988,7 @@ fun NewContactScreen(onNavigateBack: () -> Unit) {
                         if (phoneNumber.isNotEmpty() && contactName.isNotEmpty()) {
                             if (hasPermission) {
                                 saveContactWithPhoto(context, contactName, phoneNumber, selectedPhotoUri)
-                                Toast.makeText(context, "Contacto guardado", Toast.LENGTH_SHORT).show()
+                                viewModel.refreshContacts() // Actualizar lista de contactos
                                 onNavigateBack()
                             } else {
                                 Toast.makeText(context, "No hay permiso para guardar contactos", Toast.LENGTH_SHORT).show()
@@ -1952,6 +2162,8 @@ fun saveContact(context: Context, name: String, phoneNumber: String) {
         context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
 
         Toast.makeText(context, "Contacto guardado en teléfono", Toast.LENGTH_SHORT).show()
+        // Invalidar caché de contactos para que se recarguen
+        ContactsCache.invalidate()
     } catch (e: Exception) {
         Toast.makeText(context, "Error guardando contacto: ${e.message}", Toast.LENGTH_LONG).show()
         Log.e("SaveContact", "Error: ${e.message}", e)
@@ -2009,6 +2221,10 @@ fun saveContactWithPhoto(context: Context, name: String, phoneNumber: String, ph
                 Log.e("SaveContact", "Error guardando foto: ${e.message}", e)
             }
         }
+
+        Toast.makeText(context, "Contacto guardado", Toast.LENGTH_SHORT).show()
+        // Invalidar caché de contactos para que se recarguen
+        ContactsCache.invalidate()
 
     } catch (e: Exception) {
         Toast.makeText(context, "Error guardando contacto: ${e.message}", Toast.LENGTH_LONG).show()
@@ -2345,7 +2561,7 @@ fun MissedCallsPanel(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(smallPadding)
                 ) {
-                    items(missedCalls) { callLog ->
+                    items(missedCalls, key = { it.id }) { callLog ->
                         MissedCallPanelItem(
                             callLog = callLog,
                             onCallClick = {
@@ -2406,6 +2622,9 @@ fun MissedCallPanelItem(
                         model = ImageRequest.Builder(context)
                             .data(callLog.photoUri)
                             .crossfade(true)
+                            .size(100) // Limitar tamaño de decodificación
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
                             .build(),
                         contentDescription = "Foto de ${callLog.name ?: callLog.phoneNumber}",
                         modifier = Modifier
@@ -2468,82 +2687,162 @@ fun MissedCallPanelItem(
     }
 }
 
-fun getMissedCalls(context: Context): List<CallLog> {
-    val missedCalls = mutableListOf<CallLog>()
-    val returnedCallNumbers = mutableSetOf<String>() // Números a los que ya se devolvió la llamada
+// Cache para información de contactos - evita consultas repetidas
+private val contactInfoCache = mutableMapOf<String, Pair<String?, String?>>()
+
+fun getContactInfoBatch(context: Context, phoneNumbers: Set<String>): Map<String, Pair<String?, String?>> {
+    val result = mutableMapOf<String, Pair<String?, String?>>()
+    val numbersToQuery = mutableSetOf<String>()
+
+    // Primero revisar caché
+    for (number in phoneNumbers) {
+        val cached = contactInfoCache[number]
+        if (cached != null) {
+            result[number] = cached
+        } else {
+            numbersToQuery.add(number)
+        }
+    }
+
+    // Solo consultar los que no están en caché
+    if (numbersToQuery.isEmpty()) return result
 
     try {
-        // Calcular el tiempo de hace 24 horas
-        val twentyFourHoursAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
-
-        // Primero, obtener las llamadas perdidas
-        val missedCursor = context.contentResolver.query(
-            android.provider.CallLog.Calls.CONTENT_URI,
+        // Consulta batch: obtener todos los contactos del dispositivo una sola vez
+        val cursor = context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.PHOTO_URI
+            ),
             null,
-            "${android.provider.CallLog.Calls.TYPE} = ? AND ${android.provider.CallLog.Calls.DATE} >= ?",
-            arrayOf(android.provider.CallLog.Calls.MISSED_TYPE.toString(), twentyFourHoursAgo.toString()),
-            "${android.provider.CallLog.Calls.DATE} DESC"
+            null,
+            null
         )
 
-        // Guardar temporalmente las llamadas perdidas con su fecha
-        val tempMissedCalls = mutableListOf<Pair<CallLog, Long>>()
-
-        missedCursor?.use {
-            val numberIndex = it.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
-            val dateIndex = it.getColumnIndex(android.provider.CallLog.Calls.DATE)
-            val idIndex = it.getColumnIndex(android.provider.CallLog.Calls._ID)
+        // Crear mapa de números normalizados a info de contacto
+        val contactsMap = mutableMapOf<String, Pair<String?, String?>>()
+        cursor?.use {
+            val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val photoIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
 
             while (it.moveToNext()) {
-                val id = it.getString(idIndex)
-                val number = it.getString(numberIndex) ?: "Desconocido"
-                val dateMillis = it.getLong(dateIndex)
-
-                val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(dateMillis))
-                val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(dateMillis))
-                val (name, photoUri) = getContactInfoFromNumber(context, number)
-
-                tempMissedCalls.add(Pair(CallLog(id, number, name, date, time, photoUri), dateMillis))
+                val number = it.getString(numberIndex) ?: continue
+                val normalizedNumber = number.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
+                val name = if (nameIndex >= 0) it.getString(nameIndex) else null
+                val photoUri = if (photoIndex >= 0) it.getString(photoIndex) else null
+                contactsMap[normalizedNumber] = Pair(name, photoUri)
             }
         }
 
-        // Luego, buscar llamadas salientes en las últimas 24 horas para ver si se devolvió alguna llamada
-        val outgoingCursor = context.contentResolver.query(
+        // Mapear los números solicitados a sus contactos
+        for (number in numbersToQuery) {
+            val normalizedNumber = number.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
+            val contactInfo = contactsMap[normalizedNumber] ?: Pair(null, null)
+            result[number] = contactInfo
+            contactInfoCache[number] = contactInfo // Guardar en caché
+        }
+
+    } catch (e: Exception) {
+        Log.e("GetContactInfoBatch", "Error: ${e.message}", e)
+        // Si falla, devolver null para todos
+        for (number in numbersToQuery) {
+            result[number] = Pair(null, null)
+        }
+    }
+
+    return result
+}
+
+fun getMissedCalls(context: Context): List<CallLog> {
+    val missedCalls = mutableListOf<CallLog>()
+
+    try {
+        val twentyFourHoursAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
+
+        // Datos temporales de llamadas perdidas (sin info de contacto aún)
+        data class TempCallData(val id: String, val number: String, val dateMillis: Long)
+        val tempMissedCalls = mutableListOf<TempCallData>()
+
+        // 1. Obtener llamadas perdidas (solo datos básicos)
+        context.contentResolver.query(
             android.provider.CallLog.Calls.CONTENT_URI,
-            null,
+            arrayOf(
+                android.provider.CallLog.Calls._ID,
+                android.provider.CallLog.Calls.NUMBER,
+                android.provider.CallLog.Calls.DATE
+            ),
+            "${android.provider.CallLog.Calls.TYPE} = ? AND ${android.provider.CallLog.Calls.DATE} >= ?",
+            arrayOf(android.provider.CallLog.Calls.MISSED_TYPE.toString(), twentyFourHoursAgo.toString()),
+            "${android.provider.CallLog.Calls.DATE} DESC"
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndex(android.provider.CallLog.Calls._ID)
+            val numberIndex = cursor.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
+            val dateIndex = cursor.getColumnIndex(android.provider.CallLog.Calls.DATE)
+
+            while (cursor.moveToNext()) {
+                tempMissedCalls.add(TempCallData(
+                    id = cursor.getString(idIndex),
+                    number = cursor.getString(numberIndex) ?: "Desconocido",
+                    dateMillis = cursor.getLong(dateIndex)
+                ))
+            }
+        }
+
+        // 2. Obtener llamadas salientes para filtrar las devueltas
+        val outgoingCalls = mutableListOf<Pair<String, Long>>()
+        context.contentResolver.query(
+            android.provider.CallLog.Calls.CONTENT_URI,
+            arrayOf(
+                android.provider.CallLog.Calls.NUMBER,
+                android.provider.CallLog.Calls.DATE
+            ),
             "${android.provider.CallLog.Calls.TYPE} = ? AND ${android.provider.CallLog.Calls.DATE} >= ?",
             arrayOf(android.provider.CallLog.Calls.OUTGOING_TYPE.toString(), twentyFourHoursAgo.toString()),
-            "${android.provider.CallLog.Calls.DATE} DESC"
-        )
+            null
+        )?.use { cursor ->
+            val numberIndex = cursor.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
+            val dateIndex = cursor.getColumnIndex(android.provider.CallLog.Calls.DATE)
 
-        // Guardar las llamadas salientes con su fecha
-        val outgoingCalls = mutableListOf<Pair<String, Long>>() // número normalizado, fecha
-
-        outgoingCursor?.use {
-            val numberIndex = it.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
-            val dateIndex = it.getColumnIndex(android.provider.CallLog.Calls.DATE)
-
-            while (it.moveToNext()) {
-                val number = it.getString(numberIndex) ?: ""
-                val dateMillis = it.getLong(dateIndex)
-                val normalizedNumber = number.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
-                if (normalizedNumber.isNotEmpty()) {
-                    outgoingCalls.add(Pair(normalizedNumber, dateMillis))
+            while (cursor.moveToNext()) {
+                val number = cursor.getString(numberIndex) ?: ""
+                if (number.isNotEmpty()) {
+                    outgoingCalls.add(Pair(
+                        number.replace(Regex("[\\s\\-\\(\\)\\.]"), ""),
+                        cursor.getLong(dateIndex)
+                    ))
                 }
             }
         }
 
-        // Filtrar las llamadas perdidas: excluir aquellas a las que se les devolvió la llamada DESPUÉS de perderla
-        for ((callLog, missedDateMillis) in tempMissedCalls) {
-            val normalizedMissedNumber = callLog.phoneNumber.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
-
-            // Verificar si hay una llamada saliente a este número DESPUÉS de la llamada perdida
-            val wasReturned = outgoingCalls.any { (outgoingNumber, outgoingDate) ->
-                outgoingNumber == normalizedMissedNumber && outgoingDate > missedDateMillis
+        // 3. Filtrar llamadas no devueltas
+        val unreturned = tempMissedCalls.filter { missed ->
+            val normalizedMissed = missed.number.replace(Regex("[\\s\\-\\(\\)\\.]"), "")
+            !outgoingCalls.any { (outNum, outDate) ->
+                outNum == normalizedMissed && outDate > missed.dateMillis
             }
+        }
 
-            if (!wasReturned) {
-                missedCalls.add(callLog)
-            }
+        // 4. Obtener info de contactos en BATCH (una sola consulta)
+        val uniqueNumbers = unreturned.map { it.number }.toSet()
+        val contactsInfo = getContactInfoBatch(context, uniqueNumbers)
+
+        // 5. Construir la lista final
+        val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+        for (call in unreturned) {
+            val (name, photoUri) = contactsInfo[call.number] ?: Pair(null, null)
+            missedCalls.add(CallLog(
+                id = call.id,
+                phoneNumber = call.number,
+                name = name,
+                date = dateFormat.format(Date(call.dateMillis)),
+                time = timeFormat.format(Date(call.dateMillis)),
+                photoUri = photoUri
+            ))
         }
 
     } catch (e: Exception) {
@@ -2561,6 +2860,8 @@ fun MissedCallsScreen(
     val context = LocalContext.current
     var missedCalls by remember { mutableStateOf<List<CallLog>>(emptyList()) }
     var hasPermission by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
+    val coroutineScope = rememberCoroutineScope()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -2570,8 +2871,15 @@ fun MissedCallsScreen(
 
         if (readCallLogGranted && callPhoneGranted) {
             hasPermission = true
-            missedCalls = getMissedCalls(context)
+            coroutineScope.launch {
+                val calls = withContext(Dispatchers.IO) {
+                    getMissedCalls(context)
+                }
+                missedCalls = calls
+                isLoading = false
+            }
         } else {
+            isLoading = false
             Toast.makeText(context, "Se necesitan permisos para ver llamadas perdidas", Toast.LENGTH_LONG).show()
         }
     }
@@ -2589,7 +2897,11 @@ fun MissedCallsScreen(
 
         if (readGranted && callGranted) {
             hasPermission = true
-            missedCalls = getMissedCalls(context)
+            val calls = withContext(Dispatchers.IO) {
+                getMissedCalls(context)
+            }
+            missedCalls = calls
+            isLoading = false
         } else {
             permissionLauncher.launch(
                 arrayOf(
@@ -2660,7 +2972,7 @@ fun MissedCallsScreen(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(missedCalls) { callLog ->
+                    items(missedCalls, key = { it.id }) { callLog ->
                         MissedCallItem(
                             callLog = callLog,
                             onCallClick = {
