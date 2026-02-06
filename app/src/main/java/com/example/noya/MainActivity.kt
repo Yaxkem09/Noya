@@ -1091,7 +1091,7 @@ fun ContactsScreen(
                     BoxWithConstraints(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        val availableHeight = maxHeight - 100.dp // Espacio para botones de navegación
+                        val availableHeight = this.maxHeight - 100.dp // Espacio para botones de navegación
                         val spacingValue = mediumPadding.value
                         val itemTotalHeight = cardHeightValue + spacingValue
 
