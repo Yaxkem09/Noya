@@ -31,7 +31,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryChargingFull
@@ -54,6 +57,7 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -849,7 +853,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar10",
+                text = "Llamar1",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -1041,21 +1045,22 @@ fun ContactsScreen(
     val titleTextSize = ResponsiveDimens.titleTextSize()
     val mediumTextSize = ResponsiveDimens.mediumTextSize()
 
+    // Estado para la página actual (navegación tipo libro)
+    var currentPage by remember { mutableIntStateOf(0) }
+
+    // Calcular altura de cada tarjeta de contacto
+    val hidePhotos by AppSettings.hideContactPhotos
+    val photoSize by AppSettings.contactPhotoSize
+    val scaleFactor = ResponsiveDimens.getScaleFactor()
+    val scaledPhotoSize = photoSize * scaleFactor
+    val cardHeightValue = if (hidePhotos) (80 * scaleFactor) else (scaledPhotoSize + 25 * scaleFactor)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(screenPadding)
     ) {
-        // Título
-        Text(
-            text = "Contactos",
-            fontSize = titleTextSize.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF2C3E50), // Azul oscuro suave
-            modifier = Modifier.padding(bottom = mediumPadding)
-        )
-
-        // Lista de contactos
+        // Contenido de contactos (sin título)
         if (hasPermission) {
             when {
                 isLoading -> {
@@ -1069,26 +1074,126 @@ fun ContactsScreen(
                     }
                 }
                 contacts.isEmpty() -> {
-                    Text(
-                        text = "No hay contactos",
-                        fontSize = mediumTextSize.sp,
-                        color = Color.Gray,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No hay contactos",
+                            fontSize = mediumTextSize.sp,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
                 else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(mediumPadding)
+                    // Navegación tipo página de libro
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        items(contacts, key = { it.id }) { contact ->
-                            ContactItem(
-                                contact = contact,
-                                onCallClick = {
-                                    onCallStarted(contact)
+                        val availableHeight = maxHeight - 100.dp // Espacio para botones de navegación
+                        val spacingValue = mediumPadding.value
+                        val itemTotalHeight = cardHeightValue + spacingValue
+
+                        // Calcular cuántos contactos caben por página
+                        val contactsPerPage = ((availableHeight.value) / itemTotalHeight).toInt().coerceAtLeast(1)
+                        val totalPages = (contacts.size + contactsPerPage - 1) / contactsPerPage
+
+                        // Resetear página si es necesario
+                        LaunchedEffect(totalPages) {
+                            if (currentPage >= totalPages && totalPages > 0) {
+                                currentPage = totalPages - 1
+                            }
+                        }
+
+                        // Calcular rango de contactos para la página actual
+                        val startIndex = currentPage * contactsPerPage
+                        val endIndex = minOf(startIndex + contactsPerPage, contacts.size)
+                        val pageContacts = contacts.subList(startIndex, endIndex)
+
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // Lista de contactos de la página actual
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(mediumPadding)
+                            ) {
+                                pageContacts.forEach { contact ->
+                                    ContactItem(
+                                        contact = contact,
+                                        onCallClick = {
+                                            onCallStarted(contact)
+                                        }
+                                    )
                                 }
-                            )
+                            }
+
+                            // Botones de navegación (adelante/atrás)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = mediumPadding),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Botón Atrás
+                                Button(
+                                    onClick = {
+                                        if (currentPage > 0) {
+                                            currentPage--
+                                        }
+                                    },
+                                    enabled = currentPage > 0,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(90.dp)
+                                        .padding(end = mediumPadding / 2),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF3498DB),
+                                        contentColor = Color.White,
+                                        disabledContainerColor = Color(0xFFBDC3C7),
+                                        disabledContentColor = Color.White
+                                    ),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(ResponsiveDimens.cornerRadius())
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Página anterior",
+                                        modifier = Modifier.size(50.dp)
+                                    )
+                                }
+
+                                // Botón Adelante
+                                Button(
+                                    onClick = {
+                                        if (currentPage < totalPages - 1) {
+                                            currentPage++
+                                        }
+                                    },
+                                    enabled = currentPage < totalPages - 1,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(90.dp)
+                                        .padding(start = mediumPadding / 2),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF3498DB),
+                                        contentColor = Color.White,
+                                        disabledContainerColor = Color(0xFFBDC3C7),
+                                        disabledContentColor = Color.White
+                                    ),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(ResponsiveDimens.cornerRadius())
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = "Página siguiente",
+                                        modifier = Modifier.size(50.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -2727,6 +2832,7 @@ fun MissedCallPanelItem(
     val scaleFactor = ResponsiveDimens.getScaleFactor()
     val smallPadding = ResponsiveDimens.smallPadding()
     val smallCornerRadius = ResponsiveDimens.smallCornerRadius()
+    val cornerRadius = ResponsiveDimens.cornerRadius()
     val mediumTextSize = ResponsiveDimens.mediumTextSize()
     val tinyTextSize = ResponsiveDimens.tinyTextSize()
     val mediumIconSize = ResponsiveDimens.mediumIconSize()
@@ -2734,88 +2840,100 @@ fun MissedCallPanelItem(
     // Tamaño de foto para el panel (escalado)
     val panelPhotoSize = (photoSize * 0.8f * scaleFactor).coerceIn(70f * scaleFactor, 120f * scaleFactor)
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = smallPadding),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(smallCornerRadius)
+    // Tarjeta contenedora
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFB71C1C) // Rojo oscuro para la tarjeta
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 4.dp
+        ),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius)
     ) {
-        // Foto del contacto (solo si no está oculta)
-        if (!hidePhotos) {
-            Box(
-                modifier = Modifier
-                    .size(panelPhotoSize.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
-                    .background(Color(0xFFFFCDD2)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (callLog.photoUri != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(callLog.photoUri)
-                            .crossfade(true)
-                            .size(100) // Limitar tamaño de decodificación
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .build(),
-                        contentDescription = "Foto de ${callLog.name ?: callLog.phoneNumber}",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    // Icono por defecto si no tiene foto
-                    Icon(
-                        imageVector = Icons.Filled.Person,
-                        contentDescription = "Sin foto",
-                        modifier = Modifier.size((panelPhotoSize * 0.5f).dp),
-                        tint = Color(0xFFB71C1C)
-                    )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(smallPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(smallCornerRadius)
+        ) {
+            // Foto del contacto (solo si no está oculta)
+            if (!hidePhotos) {
+                Box(
+                    modifier = Modifier
+                        .size(panelPhotoSize.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius))
+                        .background(Color(0xFFFFCDD2)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (callLog.photoUri != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(callLog.photoUri)
+                                .crossfade(true)
+                                .size(100) // Limitar tamaño de decodificación
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .build(),
+                            contentDescription = "Foto de ${callLog.name ?: callLog.phoneNumber}",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        // Icono por defecto si no tiene foto
+                        Icon(
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = "Sin foto",
+                            modifier = Modifier.size((panelPhotoSize * 0.5f).dp),
+                            tint = Color(0xFFB71C1C)
+                        )
+                    }
                 }
             }
-        }
 
-        // Información de la llamada (solo si no está oculto)
-        if (!hideNames) {
-            Column(
-                modifier = Modifier.weight(1f)
+            // Información de la llamada (solo si no está oculto)
+            if (!hideNames) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = callLog.name ?: callLog.phoneNumber,
+                        fontSize = mediumTextSize.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = callLog.time,
+                        fontSize = tinyTextSize.sp,
+                        color = Color(0xFFFFCDD2) // Rojo claro para la hora
+                    )
+                }
+            } else {
+                // Espacio flexible cuando se ocultan los nombres
+                Spacer(modifier = Modifier.weight(1f))
+            }
+
+            // Botón de llamar
+            val callButtonSize = (60 * scaleFactor).dp
+            Button(
+                onClick = onCallClick,
+                modifier = Modifier.size(callButtonSize),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF58D68D),
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(0.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)
             ) {
-                Text(
-                    text = callLog.name ?: callLog.phoneNumber,
-                    fontSize = mediumTextSize.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = callLog.time,
-                    fontSize = tinyTextSize.sp,
-                    color = Color(0xFFFFCDD2) // Rojo claro para la hora
+                Icon(
+                    imageVector = Icons.Filled.Phone,
+                    contentDescription = "Llamar",
+                    modifier = Modifier.size(mediumIconSize)
                 )
             }
-        } else {
-            // Espacio flexible cuando se ocultan los nombres
-            Spacer(modifier = Modifier.weight(1f))
-        }
-
-        // Botón de llamar
-        val callButtonSize = (60 * scaleFactor).dp
-        Button(
-            onClick = onCallClick,
-            modifier = Modifier.size(callButtonSize),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.White,
-                contentColor = Color(0xFF58D68D)
-            ),
-            contentPadding = PaddingValues(0.dp),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(smallCornerRadius)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Phone,
-                contentDescription = "Llamar",
-                modifier = Modifier.size(mediumIconSize)
-            )
         }
     }
 }
@@ -2958,15 +3076,20 @@ fun getMissedCalls(context: Context): List<CallLog> {
             }
         }
 
-        // 4. Obtener info de contactos en BATCH (una sola consulta)
-        val uniqueNumbers = unreturned.map { it.number }.toSet()
+        // 4. Filtrar duplicados - solo mostrar una llamada por número (la más reciente)
+        val unreturnedUnique = unreturned
+            .sortedByDescending { it.dateMillis }
+            .distinctBy { it.number.replace(Regex("[\\s\\-\\(\\)\\.]"), "") }
+
+        // 5. Obtener info de contactos en BATCH (una sola consulta)
+        val uniqueNumbers = unreturnedUnique.map { it.number }.toSet()
         val contactsInfo = getContactInfoBatch(context, uniqueNumbers)
 
-        // 5. Construir la lista final
+        // 6. Construir la lista final
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
-        for (call in unreturned) {
+        for (call in unreturnedUnique) {
             val (name, photoUri) = contactsInfo[call.number] ?: Pair(null, null)
             missedCalls.add(CallLog(
                 id = call.id,
