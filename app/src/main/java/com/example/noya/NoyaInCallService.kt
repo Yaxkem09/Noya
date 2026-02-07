@@ -1,6 +1,7 @@
 package com.example.noya
 
 import android.content.Intent
+import android.os.Build
 import android.telecom.Call
 import android.telecom.InCallService
 import android.util.Log
@@ -28,7 +29,10 @@ class NoyaInCallService : InCallService() {
         Log.d("NoyaInCallService", "Estado: $callState (${call.state})")
         Log.d("NoyaInCallService", "========================================")
 
-        // Notificar que hay una llamada activa
+        // Limpiar estado de llamadas anteriores antes de asignar la nueva
+        IncomingCallState.callEnded.value = false
+
+        // Notificar que hay una llamada activa (thread-safe)
         CallManager.ongoingCall = call
         CallManager.setCallState(call.state)
 
@@ -91,7 +95,10 @@ class NoyaInCallService : InCallService() {
 }
 
 object CallManager {
+    @Volatile
     var ongoingCall: Call? = null
+
+    @Volatile
     private var callStateCallback: ((Int) -> Unit)? = null
 
     fun setCallState(state: Int) {

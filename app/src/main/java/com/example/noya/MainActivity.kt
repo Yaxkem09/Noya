@@ -286,8 +286,8 @@ object ResponsiveDimens {
 }
 
 object IncomingCallState {
-    var incomingCallNumber = mutableStateOf<String?>(null)
-    var callEnded = mutableStateOf(false)
+    val incomingCallNumber = mutableStateOf<String?>(null)
+    val callEnded = mutableStateOf(false)
 }
 
 object ScreenNavigationState {
@@ -538,6 +538,11 @@ class MainActivity : ComponentActivity() {
         // Cargar configuraciones guardadas
         AppSettings.init(this)
 
+        // Si hay llamada entrante, mostrar sobre pantalla de bloqueo ANTES de todo
+        if (intent?.getBooleanExtra("INCOMING_CALL", false) == true) {
+            enableShowOverLockScreen()
+        }
+
         // Ocultar la barra de estado del sistema (status bar)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val windowInsetsController = WindowInsetsControllerCompat(window, window.decorView)
@@ -568,6 +573,10 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         intent?.let {
             setIntent(it)
+            // Si hay llamada entrante, mostrar sobre pantalla de bloqueo
+            if (it.getBooleanExtra("INCOMING_CALL", false)) {
+                enableShowOverLockScreen()
+            }
             handleIncomingCallIntent(it)
         }
     }
@@ -577,12 +586,40 @@ class MainActivity : ComponentActivity() {
             if (it.getBooleanExtra("INCOMING_CALL", false)) {
                 val callerNumber = it.getStringExtra("CALLER_NUMBER") ?: "Desconocido"
                 Log.d("MainActivity", "Llamada entrante detectada: $callerNumber")
+                // Limpiar callEnded de llamadas anteriores ANTES de notificar la nueva
+                IncomingCallState.callEnded.value = false
                 IncomingCallState.incomingCallNumber.value = callerNumber
                 // Limpiar el intent
                 it.removeExtra("INCOMING_CALL")
                 it.removeExtra("CALLER_NUMBER")
             }
         }
+    }
+
+    fun enableShowOverLockScreen() {
+        Log.d("MainActivity", "Habilitando mostrar sobre pantalla de bloqueo")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
+    }
+
+    fun disableShowOverLockScreen() {
+        Log.d("MainActivity", "Deshabilitando mostrar sobre pantalla de bloqueo")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        }
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
     }
 
     private fun requestDefaultDialerRole() {
@@ -690,12 +727,18 @@ private fun MainScreenContent() {
     // Observar cuando la llamada termina
     LaunchedEffect(callEnded) {
         if (callEnded) {
-            Log.d("MainScreen", "Llamada terminada, regresando a home")
-            currentScreen = "home"
-            activeCallContact = null
-            IncomingCallState.callEnded.value = false
-            // Refrescar llamadas perdidas al terminar una llamada
-            viewModel.refreshMissedCalls()
+            // No navegar a home si hay una nueva llamada entrante
+            if (incomingCallerNumber != null) {
+                Log.d("MainScreen", "Llamada terminada, pero hay nueva llamada entrante - no navegar a home")
+                IncomingCallState.callEnded.value = false
+            } else {
+                Log.d("MainScreen", "Llamada terminada, regresando a home")
+                currentScreen = "home"
+                activeCallContact = null
+                IncomingCallState.callEnded.value = false
+                // Refrescar llamadas perdidas al terminar una llamada
+                viewModel.refreshMissedCalls()
+            }
         }
     }
 
@@ -875,7 +918,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar",
+                text = "Llamar4",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -1792,31 +1835,35 @@ fun IncomingCallScreen(
         }
     }
 
-    // Verificación inicial: si no hay llamada entrante al mostrar la pantalla
+    // Verificación inicial con reintentos: esperar a que se establezca la llamada
     LaunchedEffect(Unit) {
-        delay(100) // Pequeño margen para que se establezca el estado
+        var attempts = 0
+        val maxAttempts = 5
+        while (attempts < maxAttempts) {
+            delay(500) // Esperar 500ms entre cada intento
+            if (CallManager.ongoingCall != null || hasEnded) {
+                break
+            }
+            attempts++
+            Log.d("IncomingCallScreen", "Esperando llamada activa... intento ${attempts}/$maxAttempts")
+        }
 
-        val currentCall = CallManager.ongoingCall
-        if (currentCall == null && !hasEnded) {
-            Log.d("IncomingCallScreen", "No hay llamada activa al entrar - cerrando pantalla")
+        if (CallManager.ongoingCall == null && !hasEnded) {
+            Log.d("IncomingCallScreen", "No hay llamada activa después de ${maxAttempts} intentos - cerrando pantalla")
             hasEnded = true
             IncomingCallState.incomingCallNumber.value = null
             IncomingCallState.callEnded.value = true
         }
     }
 
-    // Mantener la pantalla encendida
+    // Mantener la pantalla encendida y sobre lock screen
     DisposableEffect(Unit) {
-        val activity = context as? ComponentActivity
-        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
-        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        val activity = context as? MainActivity
+        activity?.enableShowOverLockScreen()
 
         onDispose {
             Log.d("IncomingCallScreen", "Pantalla de llamada entrante destruida - limpiando recursos")
-            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
-            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            activity?.disableShowOverLockScreen()
             // Limpiar el callback
             CallManager.setCallStateCallback { }
         }
