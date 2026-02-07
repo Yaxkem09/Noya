@@ -295,9 +295,28 @@ object ScreenNavigationState {
 }
 
 object AppSettings {
+    private var prefs: android.content.SharedPreferences? = null
+
     var hideContactNames = mutableStateOf(false)
     var hideContactPhotos = mutableStateOf(false)
     var contactPhotoSize = mutableFloatStateOf(95f) // Tamaño por defecto en dp
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("noya_settings", Context.MODE_PRIVATE)
+        prefs?.let {
+            hideContactNames.value = it.getBoolean("hide_contact_names", false)
+            hideContactPhotos.value = it.getBoolean("hide_contact_photos", false)
+            contactPhotoSize.floatValue = it.getFloat("contact_photo_size", 95f)
+        }
+    }
+
+    fun save() {
+        prefs?.edit()
+            ?.putBoolean("hide_contact_names", hideContactNames.value)
+            ?.putBoolean("hide_contact_photos", hideContactPhotos.value)
+            ?.putFloat("contact_photo_size", contactPhotoSize.floatValue)
+            ?.apply()
+    }
 }
 
 // ViewModel centralizado para manejo de estado
@@ -515,6 +534,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Cargar configuraciones guardadas
+        AppSettings.init(this)
 
         // Ocultar la barra de estado del sistema (status bar)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -853,7 +875,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar1",
+                text = "Llamar",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -3446,7 +3468,7 @@ fun AdvancedOptionsScreen(
                     )
                     Checkbox(
                         checked = hideNames,
-                        onCheckedChange = { hideNames = it },
+                        onCheckedChange = { hideNames = it; AppSettings.save() },
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color(0xFF58D68D),
                             uncheckedColor = Color(0xFF85929E)
@@ -3473,7 +3495,7 @@ fun AdvancedOptionsScreen(
                     )
                     Checkbox(
                         checked = hidePhotos,
-                        onCheckedChange = { hidePhotos = it },
+                        onCheckedChange = { hidePhotos = it; AppSettings.save() },
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color(0xFF58D68D),
                             uncheckedColor = Color(0xFF85929E)
@@ -3494,7 +3516,7 @@ fun AdvancedOptionsScreen(
                 Spacer(modifier = Modifier.height(mediumPadding))
                 Slider(
                     value = photoSize,
-                    onValueChange = { photoSize = it },
+                    onValueChange = { photoSize = it; AppSettings.save() },
                     valueRange = 60f..200f,
                     steps = 13,
                     colors = SliderDefaults.colors(
