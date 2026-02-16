@@ -533,15 +533,14 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Siempre habilitar mostrar sobre lock screen ANTES de super.onCreate
+        // para que la ventana se cree con los flags correctos
+        enableShowOverLockScreenEarly()
+
         super.onCreate(savedInstanceState)
 
         // Cargar configuraciones guardadas
         AppSettings.init(this)
-
-        // Si hay llamada entrante, mostrar sobre pantalla de bloqueo ANTES de todo
-        if (intent?.getBooleanExtra("INCOMING_CALL", false) == true) {
-            enableShowOverLockScreen()
-        }
 
         // Ocultar la barra de estado del sistema (status bar)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -573,11 +572,19 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         intent?.let {
             setIntent(it)
-            // Si hay llamada entrante, mostrar sobre pantalla de bloqueo
             if (it.getBooleanExtra("INCOMING_CALL", false)) {
                 enableShowOverLockScreen()
             }
             handleIncomingCallIntent(it)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Si hay una llamada activa timbrando, asegurar que se muestra sobre lock screen
+        val call = CallManager.ongoingCall
+        if (call != null && call.state == android.telecom.Call.STATE_RINGING) {
+            enableShowOverLockScreen()
         }
     }
 
@@ -596,16 +603,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Se llama ANTES de super.onCreate() - solo usa APIs que no requieren window
+    private fun enableShowOverLockScreenEarly() {
+        Log.d("MainActivity", "Habilitando mostrar sobre lock screen (early)")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+    }
+
     fun enableShowOverLockScreen() {
         Log.d("MainActivity", "Habilitando mostrar sobre pantalla de bloqueo")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
+            // Pedir desbloqueo del keyguard
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+            keyguardManager.requestDismissKeyguard(this, null)
         }
+        @Suppress("DEPRECATION")
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         )
     }
 
@@ -918,7 +939,7 @@ fun HomeScreen(
         ) {
             // Botón Llamar
             GridImageButton(
-                text = "Llamar4",
+                text = "Llamar",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
                 modifier = Modifier.weight(1f)
@@ -1540,7 +1561,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
             if (state == Call.STATE_DISCONNECTED && !hasEnded) {
                 Log.d("ActiveCallScreen", "Llamada desconectada - cerrando pantalla")
                 hasEnded = true
-                audioManager.isSpeakerphoneOn = false
+                CallManager.setSpeaker(false)
                 onEndCall()
             }
         }
@@ -1559,7 +1580,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         if (currentCall == null && !hasEnded) {
             Log.d("ActiveCallScreen", "No hay llamada activa después de esperar - cerrando pantalla")
             hasEnded = true
-            audioManager.isSpeakerphoneOn = false
+            CallManager.setSpeaker(false)
             onEndCall()
         }
     }
@@ -1602,7 +1623,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
 
             // Limpiar configuración de audio
             try {
-                audioManager.isSpeakerphoneOn = false
+                CallManager.setSpeaker(false)
                 audioManager.mode = AudioManager.MODE_NORMAL
                 Log.d("ActiveCallScreen", "Audio restaurado a modo normal")
             } catch (e: Exception) {
@@ -1708,20 +1729,13 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                 isSpeakerOn = !isSpeakerOn
 
                 try {
-                    // Usar MODE_IN_COMMUNICATION para mejor compatibilidad con altavoz
-                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                    // Usar InCallService para cambiar ruta de audio (forma correcta)
+                    CallManager.setSpeaker(isSpeakerOn)
 
                     if (isSpeakerOn) {
-                        // Activar altavoz
-                        audioManager.isSpeakerphoneOn = true
                         // Subir volumen de comunicación al máximo
                         val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
                         audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, maxVolume, 0)
-                        Log.d("ActiveCallScreen", "Altavoz activado - Modo: ${audioManager.mode}, Speaker: ${audioManager.isSpeakerphoneOn}, Vol: $maxVolume")
-                    } else {
-                        // Desactivar altavoz
-                        audioManager.isSpeakerphoneOn = false
-                        Log.d("ActiveCallScreen", "Altavoz desactivado - Modo: ${audioManager.mode}, Speaker: ${audioManager.isSpeakerphoneOn}")
                     }
 
                     Toast.makeText(
@@ -1765,7 +1779,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         // Botón para colgar
         Button(
             onClick = {
-                audioManager.isSpeakerphoneOn = false
+                CallManager.setSpeaker(false)
                 CallManager.endCall()
                 onEndCall()
             },

@@ -1,8 +1,11 @@
 package com.example.noya
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
 import android.telecom.Call
+import android.telecom.CallAudioState
 import android.telecom.InCallService
 import android.util.Log
 
@@ -10,7 +13,14 @@ class NoyaInCallService : InCallService() {
 
     override fun onCreate() {
         super.onCreate()
+        CallManager.inCallService = this
         Log.d("NoyaInCallService", "Servicio creado - ESPERANDO LLAMADAS")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        CallManager.inCallService = null
+        Log.d("NoyaInCallService", "Servicio destruido")
     }
 
     override fun onBind(intent: Intent?): android.os.IBinder? {
@@ -39,6 +49,15 @@ class NoyaInCallService : InCallService() {
         // Si es una llamada entrante (ringing), mostrar la UI
         if (call.state == Call.STATE_RINGING) {
             Log.d("NoyaInCallService", "Mostrando UI de llamada entrante")
+
+            // Despertar el dispositivo completamente con WakeLock
+            @Suppress("DEPRECATION")
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val wakeLock = powerManager.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "noya:incomingCall"
+            )
+            wakeLock.acquire(10_000L) // 10 segundos máximo
 
             // Lanzar la actividad principal para mostrar la llamada entrante
             val intent = Intent(this, MainActivity::class.java).apply {
@@ -99,6 +118,9 @@ object CallManager {
     var ongoingCall: Call? = null
 
     @Volatile
+    var inCallService: NoyaInCallService? = null
+
+    @Volatile
     private var callStateCallback: ((Int) -> Unit)? = null
 
     fun setCallState(state: Int) {
@@ -121,9 +143,17 @@ object CallManager {
         ongoingCall?.reject(false, null)
     }
 
-    fun setAudioRoute(route: Int) {
-        ongoingCall?.let { call ->
-            // Configurar ruta de audio (altavoz, auricular, etc.)
+    fun setSpeaker(enabled: Boolean) {
+        try {
+            val route = if (enabled) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_EARPIECE
+            inCallService?.setAudioRoute(route)
+            Log.d("CallManager", "Audio route cambiado a: ${if (enabled) "SPEAKER" else "EARPIECE"}")
+        } catch (e: Exception) {
+            Log.e("CallManager", "Error al cambiar ruta de audio: ${e.message}", e)
         }
+    }
+
+    fun isSpeakerOn(): Boolean {
+        return inCallService?.callAudioState?.route == CallAudioState.ROUTE_SPEAKER
     }
 }
