@@ -8,6 +8,9 @@ import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.InCallService
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class NoyaInCallService : InCallService() {
 
@@ -120,15 +123,11 @@ object CallManager {
     @Volatile
     var inCallService: NoyaInCallService? = null
 
-    @Volatile
-    private var callStateCallback: ((Int) -> Unit)? = null
+    private val _callState = MutableStateFlow(Call.STATE_DISCONNECTED)
+    val callState: StateFlow<Int> = _callState.asStateFlow()
 
     fun setCallState(state: Int) {
-        callStateCallback?.invoke(state)
-    }
-
-    fun setCallStateCallback(callback: (Int) -> Unit) {
-        callStateCallback = callback
+        _callState.value = state
     }
 
     fun endCall() {

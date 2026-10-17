@@ -102,10 +102,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.example.noya.ui.theme.NoyaTheme
@@ -532,6 +536,8 @@ class MainActivity : ComponentActivity() {
         private const val REQUEST_CODE_SET_DEFAULT_DIALER = 1001
     }
 
+    private var forceCallUiVisible = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Siempre habilitar mostrar sobre lock screen ANTES de super.onCreate
         // para que la ventana se cree con los flags correctos
@@ -560,6 +566,21 @@ class MainActivity : ComponentActivity() {
                     color = Color(0xFFF5F5DC) // Color beige suave
                 ) {
                     MainScreen()
+                }
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                CallManager.callState.collectLatest { state ->
+                    val shouldForceShow = state == Call.STATE_RINGING || state == Call.STATE_ACTIVE
+                    if (shouldForceShow && !forceCallUiVisible) {
+                        forceCallUiVisible = true
+                        enableShowOverLockScreen()
+                    } else if (!shouldForceShow && forceCallUiVisible) {
+                        forceCallUiVisible = false
+                        disableShowOverLockScreen()
+                    }
                 }
             }
         }
@@ -845,11 +866,28 @@ fun HomeScreen(
     val batteryStatus by viewModel.batteryStatus.collectAsStateWithLifecycle()
     val isSilentMode by viewModel.isSilentMode.collectAsStateWithLifecycle()
     val missedCalls by viewModel.missedCalls.collectAsStateWithLifecycle()
-    val hasCallLogPermission by viewModel.hasCallLogPermission.collectAsStateWithLifecycle()
 
     // Estados locales de UI
     var pressProgress by remember { mutableFloatStateOf(0f) }
     var isPressing by remember { mutableStateOf(false) }
+
+    val missedCallsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val readGranted = permissions[Manifest.permission.READ_CALL_LOG] ?: false
+        val callGranted = permissions[Manifest.permission.CALL_PHONE] ?: false
+
+        if (readGranted) {
+            viewModel.loadMissedCalls(true)
+            viewModel.startMissedCallsUpdates()
+        } else {
+            Toast.makeText(context, "Se necesitan permisos para mostrar llamadas perdidas", Toast.LENGTH_LONG).show()
+        }
+
+        if (!callGranted) {
+            Toast.makeText(context, "Concede permiso de llamadas para devolver una llamada fácilmente", Toast.LENGTH_LONG).show()
+        }
+    }
 
     // Cargar llamadas perdidas al iniciar
     LaunchedEffect(Unit) {
@@ -857,9 +895,22 @@ fun HomeScreen(
             context,
             Manifest.permission.READ_CALL_LOG
         ) == PackageManager.PERMISSION_GRANTED
+        val callGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CALL_PHONE
+        ) == PackageManager.PERMISSION_GRANTED
 
-        viewModel.loadMissedCalls(readGranted)
-        viewModel.startMissedCallsUpdates()
+        if (readGranted && callGranted) {
+            viewModel.loadMissedCalls(true)
+            viewModel.startMissedCallsUpdates()
+        } else {
+            missedCallsPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.READ_CALL_LOG,
+                    Manifest.permission.CALL_PHONE
+                )
+            )
+        }
     }
 
     // Manejar el progreso de la presión
@@ -1536,7 +1587,7 @@ fun openWhatsApp(context: Context) {
 fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     val context = LocalContext.current
     var isSpeakerOn by remember { mutableStateOf(false) }
-    var callState by remember { mutableStateOf<Int?>(null) }
+    val callState by CallManager.callState.collectAsStateWithLifecycle()
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     var hasEnded by remember { mutableStateOf(false) }
     var contactPhoto by remember { mutableStateOf<String?>(contact.photoUri) }
@@ -1551,19 +1602,14 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         }
     }
 
-    // Monitorear el estado de la llamada con callback
-    LaunchedEffect(Unit) {
-        CallManager.setCallStateCallback { state ->
-            callState = state
-            Log.d("ActiveCallScreen", "Estado de llamada actualizado: $state")
-
-            // Si la llamada se desconectó, cerrar la pantalla
-            if (state == Call.STATE_DISCONNECTED && !hasEnded) {
-                Log.d("ActiveCallScreen", "Llamada desconectada - cerrando pantalla")
-                hasEnded = true
-                CallManager.setSpeaker(false)
-                onEndCall()
-            }
+    // Monitorear el estado de la llamada con Flow compartido
+    LaunchedEffect(callState) {
+        Log.d("ActiveCallScreen", "Estado de llamada actualizado: $callState")
+        if (callState == Call.STATE_DISCONNECTED && !hasEnded) {
+            Log.d("ActiveCallScreen", "Llamada desconectada - cerrando pantalla")
+            hasEnded = true
+            CallManager.setSpeaker(false)
+            onEndCall()
         }
     }
 
@@ -1598,17 +1644,6 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         // Solo iniciar llamada si no hay una llamada en curso
         if (CallManager.ongoingCall == null && contact.id != "incoming") {
             makePhoneCall(context, contact.phoneNumber)
-
-            // Mantener trayendo nuestra actividad al frente cada 300ms durante los primeros 3 segundos
-            val handler = android.os.Handler(android.os.Looper.getMainLooper())
-            repeat(10) { iteration ->
-                handler.postDelayed({
-                    val bringToFrontIntent = Intent(context, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    }
-                    context.startActivity(bringToFrontIntent)
-                }, (iteration * 300).toLong())
-            }
         }
     }
 
@@ -1630,8 +1665,6 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                 Log.e("ActiveCallScreen", "Error al restaurar audio: ${e.message}", e)
             }
 
-            // Limpiar el callback para evitar memory leaks
-            CallManager.setCallStateCallback { }
         }
     }
 
@@ -1823,6 +1856,7 @@ fun IncomingCallScreen(
     var callerName by remember { mutableStateOf<String?>(null) }
     var callerPhoto by remember { mutableStateOf<String?>(null) }
     var hasEnded by remember { mutableStateOf(false) }
+    val callState by CallManager.callState.collectAsStateWithLifecycle()
 
     // Buscar el nombre y foto del contacto (en IO thread)
     LaunchedEffect(callerNumber) {
@@ -1833,19 +1867,15 @@ fun IncomingCallScreen(
         callerPhoto = photoUri
     }
 
-    // Monitorear si la llamada fue cancelada via callback
-    LaunchedEffect(Unit) {
-        CallManager.setCallStateCallback { state ->
-            Log.d("IncomingCallScreen", "Estado de llamada actualizado: $state")
-
-            // Si la llamada se desconectó o cambió de estado antes de contestar
-            if (!hasEnded && (state == Call.STATE_DISCONNECTED ||
-                (state != Call.STATE_RINGING && state != Call.STATE_ACTIVE))) {
-                Log.d("IncomingCallScreen", "Llamada cancelada/terminada (estado: $state) - cerrando pantalla")
-                hasEnded = true
-                IncomingCallState.incomingCallNumber.value = null
-                IncomingCallState.callEnded.value = true
-            }
+    // Monitorear si la llamada fue cancelada via Flow
+    LaunchedEffect(callState) {
+        Log.d("IncomingCallScreen", "Estado de llamada actualizado: $callState")
+        if (!hasEnded && (callState == Call.STATE_DISCONNECTED ||
+            (callState != Call.STATE_RINGING && callState != Call.STATE_ACTIVE))) {
+            Log.d("IncomingCallScreen", "Llamada cancelada/terminada (estado: $callState) - cerrando pantalla")
+            hasEnded = true
+            IncomingCallState.incomingCallNumber.value = null
+            IncomingCallState.callEnded.value = true
         }
     }
 
@@ -1877,9 +1907,7 @@ fun IncomingCallScreen(
 
         onDispose {
             Log.d("IncomingCallScreen", "Pantalla de llamada entrante destruida - limpiando recursos")
-            activity?.disableShowOverLockScreen()
-            // Limpiar el callback
-            CallManager.setCallStateCallback { }
+            // El estado de la ventana ahora se controla desde MainActivity/lifecycleScope
         }
     }
 
