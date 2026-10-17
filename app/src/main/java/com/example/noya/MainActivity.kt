@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.view.WindowManager
 import android.provider.ContactsContract
 import android.provider.Settings
@@ -716,6 +717,11 @@ class MainActivity : ComponentActivity() {
     // No usar onStop() porque se dispara durante gestos de navegación parciales
     override fun onRestart() {
         super.onRestart()
+        // No salir de la pantalla de llamada si hay una llamada en curso
+        if (CallManager.ongoingCall != null) {
+            Log.d("MainActivity", "onRestart llamado - hay llamada en curso, no navegar a home")
+            return
+        }
         Log.d("MainActivity", "onRestart llamado - navegando a home")
         ScreenNavigationState.shouldNavigateToHome.value = true
     }
@@ -1590,6 +1596,9 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     val callState by CallManager.callState.collectAsStateWithLifecycle()
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     var hasEnded by remember { mutableStateOf(false) }
+    // Solo se considera que la llamada terminó si antes se vio iniciada
+    // (el estado inicial de CallManager es DISCONNECTED cuando no hay llamada)
+    var callStarted by remember { mutableStateOf(false) }
     var contactPhoto by remember { mutableStateOf<String?>(contact.photoUri) }
 
     // Obtener la foto del contacto si no la tenemos (en IO thread)
@@ -1605,7 +1614,15 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     // Monitorear el estado de la llamada con Flow compartido
     LaunchedEffect(callState) {
         Log.d("ActiveCallScreen", "Estado de llamada actualizado: $callState")
-        if (callState == Call.STATE_DISCONNECTED && !hasEnded) {
+        if (callState == Call.STATE_DIALING ||
+            callState == Call.STATE_CONNECTING ||
+            callState == Call.STATE_RINGING ||
+            callState == Call.STATE_ACTIVE ||
+            callState == Call.STATE_HOLDING
+        ) {
+            callStarted = true
+        }
+        if (callState == Call.STATE_DISCONNECTED && callStarted && !hasEnded) {
             Log.d("ActiveCallScreen", "Llamada desconectada - cerrando pantalla")
             hasEnded = true
             CallManager.setSpeaker(false)
@@ -1632,15 +1649,8 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     }
 
     // Iniciar la llamada cuando se muestra la pantalla (solo para llamadas salientes)
+    // El modo de audio lo maneja el sistema (Telecom); no se modifica aquí
     LaunchedEffect(contact.id) {
-        // Configurar el modo de audio al iniciar
-        try {
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            Log.d("ActiveCallScreen", "Modo de audio configurado a IN_COMMUNICATION")
-        } catch (e: Exception) {
-            Log.e("ActiveCallScreen", "Error al configurar modo de audio: ${e.message}", e)
-        }
-
         // Solo iniciar llamada si no hay una llamada en curso
         if (CallManager.ongoingCall == null && contact.id != "incoming") {
             makePhoneCall(context, contact.phoneNumber)
@@ -1659,12 +1669,33 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
             // Limpiar configuración de audio
             try {
                 CallManager.setSpeaker(false)
-                audioManager.mode = AudioManager.MODE_NORMAL
-                Log.d("ActiveCallScreen", "Audio restaurado a modo normal")
             } catch (e: Exception) {
                 Log.e("ActiveCallScreen", "Error al restaurar audio: ${e.message}", e)
             }
 
+        }
+    }
+
+    // Sensor de proximidad: apagar la pantalla al acercar el teléfono a la oreja
+    // para evitar toques accidentales con la mejilla. Se desactiva con el altavoz.
+    DisposableEffect(isSpeakerOn) {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val proximityWakeLock =
+            if (!isSpeakerOn && powerManager.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
+                powerManager.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "noya:proximity").apply {
+                    setReferenceCounted(false)
+                    acquire(4 * 60 * 60 * 1000L) // 4 horas máximo
+                }
+            } else {
+                null
+            }
+        Log.d("ActiveCallScreen", "Sensor de proximidad ${if (proximityWakeLock != null) "activado" else "desactivado"}")
+
+        onDispose {
+            // Esperar a que se aleje el teléfono de la cara antes de encender la pantalla
+            if (proximityWakeLock?.isHeld == true) {
+                proximityWakeLock.release(PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
+            }
         }
     }
 
