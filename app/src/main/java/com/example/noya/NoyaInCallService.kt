@@ -66,13 +66,13 @@ class NoyaInCallService : InCallService() {
             // la notificación de llamada la abre o muestra botones para contestar
             IncomingCallNotification.show(this, callerNumber)
 
-            // Lanzar la actividad principal para mostrar la llamada entrante
+            // Lanzar la actividad principal para mostrar la llamada entrante.
+            // Mostrarse sobre el bloqueo y encender la pantalla lo hace MainActivity
+            // (showWhenLocked / turnScreenOn); esas banderas son de ventana, no de Intent.
             val intent = Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP
-                addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
-                addFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
                 putExtra("INCOMING_CALL", true)
                 putExtra("CALLER_NUMBER", callerNumber)
             }

@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
+import com.example.noya.data.getContactInfoFromNumber
 
 // Notificación de llamada entrante. Es la red de seguridad por si el teléfono
 // no deja abrir la pantalla de llamada directamente: Android usa el
