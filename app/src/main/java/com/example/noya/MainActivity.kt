@@ -15,6 +15,10 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.telephony.PhoneNumberUtils
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 import android.provider.ContactsContract
 import android.provider.Settings
@@ -97,6 +101,7 @@ import coil.request.ImageRequest
 import coil.request.CachePolicy
 import coil.size.Size
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -331,6 +336,24 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
     // Flag para evitar múltiples loops de actualización
     private var missedCallsUpdatesStarted = false
 
+    // Observador de cambios en los contactos del teléfono (agregar, editar, sincronizar)
+    private var contactsObserverRegistered = false
+    private var contactsChangedJob: Job? = null
+    private val contactsObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            // Esperar un momento: una sincronización genera muchos avisos seguidos
+            contactsChangedJob?.cancel()
+            contactsChangedJob = viewModelScope.launch {
+                delay(1500)
+                Log.d("NoyaViewModel", "Contactos cambiaron - actualizando nombres y fotos")
+                clearContactInfoCache()
+                ContactsCache.invalidate()
+                refreshContacts()
+                refreshMissedCalls()
+            }
+        }
+    }
+
     // Estado de contactos
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     val contacts = _contacts.asStateFlow()
@@ -433,6 +456,32 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: Exception) {
             // Ignorar si ya fue desregistrado
         }
+        if (contactsObserverRegistered) {
+            getApplication<Application>().contentResolver.unregisterContentObserver(contactsObserver)
+        }
+    }
+
+    // Registrar el observador de contactos (requiere permiso de leer contactos)
+    private fun registerContactsObserver() {
+        if (contactsObserverRegistered) return
+        val app = getApplication<Application>()
+        val granted = ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CONTACTS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!granted) return
+
+        try {
+            app.contentResolver.registerContentObserver(
+                ContactsContract.Contacts.CONTENT_URI,
+                true,
+                contactsObserver
+            )
+            contactsObserverRegistered = true
+            // Recién hay permiso de contactos: volver a buscar nombres de llamadas perdidas
+            clearContactInfoCache()
+            refreshMissedCalls()
+        } catch (e: Exception) {
+            Log.e("NoyaViewModel", "Error registrando observador de contactos: ${e.message}", e)
+        }
     }
 
     // Actualizar hora cada segundo
@@ -463,6 +512,7 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         _hasContactsPermission.value = true
+        registerContactsObserver()
 
         // Si ya tenemos contactos cargados, no recargar
         if (_contacts.value.isNotEmpty()) {
@@ -487,6 +537,7 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         _hasCallLogPermission.value = true
+        registerContactsObserver()
 
         // Si ya tenemos llamadas cargadas, no recargar
         if (_missedCalls.value.isNotEmpty()) {
@@ -641,8 +692,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // Si hay una llamada activa timbrando, asegurar que se muestra sobre lock screen
-        val call = CallManager.ongoingCall
-        if (call != null && call.state == android.telecom.Call.STATE_RINGING) {
+        if (CallManager.ringingCall() != null) {
             enableShowOverLockScreen()
         }
     }
@@ -838,6 +888,32 @@ private fun MainScreenContent() {
         }
     }
 
+    // Si la llamada con la que se habla cambia (por ejemplo, al colgar la segunda
+    // llamada se reanuda la que estaba en espera), mostrar los datos de esa llamada
+    val activeCallNumber by CallManager.activeCallNumber.collectAsStateWithLifecycle()
+    LaunchedEffect(activeCallNumber) {
+        val number = activeCallNumber ?: return@LaunchedEffect
+        val contact = activeCallContact ?: return@LaunchedEffect
+        if (currentScreen == "activeCall" && !PhoneNumberUtils.compare(contact.phoneNumber, number)) {
+            Log.d("MainScreen", "La llamada activa cambió a $number")
+            activeCallContact = Contact("incoming", number, number)
+        }
+    }
+
+    // Al terminar o rechazar una llamada que sonaba: si sigue otra llamada
+    // en curso, volver a su pantalla; si no, regresar a home
+    val returnAfterIncomingCall = {
+        IncomingCallState.incomingCallNumber.value = null
+        if (CallManager.activeCall() != null && activeCallContact != null) {
+            Log.d("MainScreen", "Sigue otra llamada en curso - volviendo a la pantalla de llamada")
+            currentScreen = "activeCall"
+        } else {
+            currentScreen = "home"
+            activeCallContact = null
+            viewModel.refreshMissedCalls()
+        }
+    }
+
     when (currentScreen) {
         "home" -> HomeScreen(
             onNavigateToContacts = { currentScreen = "contacts" },
@@ -875,21 +951,22 @@ private fun MainScreenContent() {
             },
             onReject = {
                 CallManager.rejectCall()
-                IncomingCallState.incomingCallNumber.value = null
-                currentScreen = "home"
-                // Refrescar llamadas perdidas al rechazar
-                viewModel.refreshMissedCalls()
-            }
+                returnAfterIncomingCall()
+            },
+            onCallGone = { returnAfterIncomingCall() }
         )
         "activeCall" -> activeCallContact?.let { contact ->
-            ActiveCallScreen(
-                contact = contact,
-                onEndCall = {
-                    currentScreen = "home"
-                    // Refrescar llamadas perdidas al terminar
-                    viewModel.refreshMissedCalls()
-                }
-            )
+            // key: si cambia la llamada activa, la pantalla se crea de nuevo con sus datos
+            key(contact.phoneNumber) {
+                ActiveCallScreen(
+                    contact = contact,
+                    onEndCall = {
+                        currentScreen = "home"
+                        // Refrescar llamadas perdidas al terminar
+                        viewModel.refreshMissedCalls()
+                    }
+                )
+            }
         }
     }
 }
@@ -1182,6 +1259,10 @@ fun ContactsScreen(
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoadingContacts.collectAsStateWithLifecycle()
     val hasPermission by viewModel.hasContactsPermission.collectAsStateWithLifecycle()
+    // Se negó el permiso: mostrar mensaje con botones en vez de pantalla en blanco
+    var permissionDenied by remember { mutableStateOf(false) }
+    // El permiso se pidió desde el botón "Dar permiso"
+    var askedFromButton by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -1190,9 +1271,23 @@ fun ContactsScreen(
         val callPhoneGranted = permissions[Manifest.permission.CALL_PHONE] ?: false
 
         if (readContactsGranted && callPhoneGranted) {
+            permissionDenied = false
             viewModel.loadContacts(true)
         } else {
-            Toast.makeText(context, "Se necesitan permisos para ver contactos y realizar llamadas", Toast.LENGTH_LONG).show()
+            permissionDenied = true
+            if (askedFromButton) {
+                // Si Android ya no muestra el diálogo ("no volver a preguntar"),
+                // abrir los ajustes de la app para dar el permiso a mano
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                    context.startActivity(intent)
+                    Toast.makeText(context, "Activa los permisos de Contactos y Teléfono", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Log.e("ContactsScreen", "Error abriendo ajustes de la app: ${e.message}", e)
+                }
+            }
         }
     }
 
@@ -1377,6 +1472,50 @@ fun ContactsScreen(
                         }
                     }
                 }
+            }
+        } else if (permissionDenied) {
+            // Sin permiso: explicar y dar salida (antes la pantalla quedaba en blanco)
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(ResponsiveDimens.largeIconSize() * 2),
+                    tint = Color(0xFF85929E)
+                )
+                Spacer(modifier = Modifier.height(mediumPadding))
+                Text(
+                    text = "Noya necesita permiso para ver los contactos y hacer llamadas",
+                    fontSize = mediumTextSize.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2C3E50),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(ResponsiveDimens.largePadding() * 2))
+                LargeAccessibleButton(
+                    text = "Dar permiso",
+                    icon = Icons.Filled.Settings,
+                    onClick = {
+                        askedFromButton = true
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.READ_CONTACTS,
+                                Manifest.permission.CALL_PHONE
+                            )
+                        )
+                    },
+                    backgroundColor = Color(0xFF58D68D)
+                )
+                Spacer(modifier = Modifier.height(mediumPadding))
+                LargeAccessibleButton(
+                    text = "Regresar",
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    onClick = onNavigateBack,
+                    backgroundColor = Color(0xFF85929E)
+                )
             }
         }
     }
@@ -1637,14 +1776,17 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
     // (el estado inicial de CallManager es DISCONNECTED cuando no hay llamada)
     var callStarted by remember { mutableStateOf(false) }
     var contactPhoto by remember { mutableStateOf<String?>(contact.photoUri) }
+    var contactName by remember { mutableStateOf(contact.name) }
 
-    // Obtener la foto del contacto si no la tenemos (en IO thread)
+    // Obtener nombre y foto del contacto si no los tenemos (en IO thread).
+    // Las llamadas entrantes solo traen el número.
     LaunchedEffect(contact.phoneNumber) {
-        if (contactPhoto == null) {
-            val (_, photoUri) = withContext(Dispatchers.IO) {
+        if (contactPhoto == null || contact.id == "incoming") {
+            val (name, photoUri) = withContext(Dispatchers.IO) {
                 getContactInfoFromNumber(context, contact.phoneNumber)
             }
-            contactPhoto = photoUri
+            if (name != null) contactName = name
+            if (contactPhoto == null) contactPhoto = photoUri
         }
     }
 
@@ -1774,7 +1916,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                         .memoryCachePolicy(CachePolicy.ENABLED)
                         .diskCachePolicy(CachePolicy.ENABLED)
                         .build(),
-                    contentDescription = "Foto de ${contact.name}",
+                    contentDescription = "Foto de $contactName",
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(largeCornerRadius)),
@@ -1794,7 +1936,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
 
         // Nombre del contacto
         Text(
-            text = contact.name,
+            text = contactName,
             fontSize = (36 * scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF2C3E50), // Azul oscuro suave
@@ -1880,9 +2022,14 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
         // Botón para colgar
         Button(
             onClick = {
+                // Si hay otra llamada en espera, no salir de la pantalla:
+                // se reanuda y la pantalla muestra sus datos
+                val hasOtherCall = CallManager.callCount() > 1
                 CallManager.setSpeaker(false)
                 CallManager.endCall()
-                onEndCall()
+                if (!hasOtherCall) {
+                    onEndCall()
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -1918,7 +2065,8 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
 fun IncomingCallScreen(
     callerNumber: String,
     onAccept: () -> Unit,
-    onReject: () -> Unit
+    onReject: () -> Unit,
+    onCallGone: () -> Unit
 ) {
     val context = LocalContext.current
     var callerName by remember { mutableStateOf<String?>(null) }
@@ -1935,15 +2083,15 @@ fun IncomingCallScreen(
         callerPhoto = photoUri
     }
 
-    // Monitorear si la llamada fue cancelada via Flow
+    // Monitorear si la llamada que suena fue cancelada via Flow.
+    // Se revisa la llamada que suena (no el estado general) porque puede
+    // haber otra llamada activa al mismo tiempo (llamada en espera).
     LaunchedEffect(callState) {
         Log.d("IncomingCallScreen", "Estado de llamada actualizado: $callState")
-        if (!hasEnded && (callState == Call.STATE_DISCONNECTED ||
-            (callState != Call.STATE_RINGING && callState != Call.STATE_ACTIVE))) {
+        if (!hasEnded && CallManager.ringingCall() == null) {
             Log.d("IncomingCallScreen", "Llamada cancelada/terminada (estado: $callState) - cerrando pantalla")
             hasEnded = true
-            IncomingCallState.incomingCallNumber.value = null
-            IncomingCallState.callEnded.value = true
+            onCallGone()
         }
     }
 
@@ -1953,18 +2101,17 @@ fun IncomingCallScreen(
         val maxAttempts = 5
         while (attempts < maxAttempts) {
             delay(500) // Esperar 500ms entre cada intento
-            if (CallManager.ongoingCall != null || hasEnded) {
+            if (CallManager.ringingCall() != null || hasEnded) {
                 break
             }
             attempts++
-            Log.d("IncomingCallScreen", "Esperando llamada activa... intento ${attempts}/$maxAttempts")
+            Log.d("IncomingCallScreen", "Esperando llamada entrante... intento ${attempts}/$maxAttempts")
         }
 
-        if (CallManager.ongoingCall == null && !hasEnded) {
-            Log.d("IncomingCallScreen", "No hay llamada activa después de ${maxAttempts} intentos - cerrando pantalla")
+        if (CallManager.ringingCall() == null && !hasEnded) {
+            Log.d("IncomingCallScreen", "No hay llamada entrante después de ${maxAttempts} intentos - cerrando pantalla")
             hasEnded = true
-            IncomingCallState.incomingCallNumber.value = null
-            IncomingCallState.callEnded.value = true
+            onCallGone()
         }
     }
 
@@ -2145,6 +2292,8 @@ fun NewContactScreen(
     var contactName by remember { mutableStateOf("") }
     var hasPermission by remember { mutableStateOf(false) }
     var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Dimensiones responsivas
     val smallPadding = ResponsiveDimens.smallPadding()
@@ -2404,9 +2553,30 @@ fun NewContactScreen(
                     onClick = {
                         if (phoneNumber.isNotEmpty() && contactName.isNotEmpty()) {
                             if (hasPermission) {
-                                saveContactWithPhoto(context, contactName, phoneNumber, selectedPhotoUri)
-                                viewModel.refreshContacts() // Actualizar lista de contactos
-                                onNavigateBack()
+                                if (isSaving) return@Button
+                                isSaving = true
+                                coroutineScope.launch {
+                                    // Guardar fuera del hilo principal (la foto puede tardar)
+                                    val result = withContext(Dispatchers.IO) {
+                                        saveContactWithPhoto(context, contactName, phoneNumber, selectedPhotoUri)
+                                    }
+                                    isSaving = false
+                                    when (result) {
+                                        SaveContactResult.SAVED -> {
+                                            Toast.makeText(context, "Contacto guardado", Toast.LENGTH_SHORT).show()
+                                        }
+                                        SaveContactResult.SAVED_WITHOUT_PHOTO -> {
+                                            Toast.makeText(context, "Contacto guardado, pero no se pudo guardar la foto", Toast.LENGTH_LONG).show()
+                                        }
+                                        SaveContactResult.FAILED -> {
+                                            Toast.makeText(context, "No se pudo guardar el contacto", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                    if (result != SaveContactResult.FAILED) {
+                                        viewModel.refreshContacts() // Actualizar lista de contactos
+                                        onNavigateBack()
+                                    }
+                                }
                             } else {
                                 Toast.makeText(context, "No hay permiso para guardar contactos", Toast.LENGTH_SHORT).show()
                             }
@@ -2433,7 +2603,7 @@ fun NewContactScreen(
                         )
                         Spacer(modifier = Modifier.width(smallPadding))
                         Text(
-                            text = "Guardar Contacto",
+                            text = if (isSaving) "Guardando..." else "Guardar Contacto",
                             fontSize = smallTextSize.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -2587,66 +2757,110 @@ fun saveContact(context: Context, name: String, phoneNumber: String) {
     }
 }
 
-fun saveContactWithPhoto(context: Context, name: String, phoneNumber: String, photoUri: Uri?) {
+enum class SaveContactResult { SAVED, SAVED_WITHOUT_PHOTO, FAILED }
+
+// Guarda el contacto en el teléfono (no SIM, para poder guardar foto).
+// Hace lectura de archivos y base de datos: llamar desde Dispatchers.IO.
+fun saveContactWithPhoto(context: Context, name: String, phoneNumber: String, photoUri: Uri?): SaveContactResult {
+    val rawContactId: Long
     try {
-        // Crear contacto en el teléfono (no SIM para poder guardar foto)
-        val contentValues = android.content.ContentValues().apply {
-            put(ContactsContract.RawContacts.ACCOUNT_TYPE, null as String?)
-            put(ContactsContract.RawContacts.ACCOUNT_NAME, null as String?)
-        }
-
-        val rawContactUri = context.contentResolver.insert(
-            ContactsContract.RawContacts.CONTENT_URI,
-            contentValues
+        // Nombre y número en una sola operación: o se guarda todo o nada
+        val operations = arrayListOf(
+            android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+                .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+                .build(),
+            android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
+                .build(),
+            android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phoneNumber)
+                .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+                .build()
         )
-
-        val rawContactId = rawContactUri?.lastPathSegment?.toLong() ?: return
-
-        // Insertar nombre
-        val nameValues = android.content.ContentValues().apply {
-            put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
-            put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-            put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
-        }
-        context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, nameValues)
-
-        // Insertar número de teléfono
-        val phoneValues = android.content.ContentValues().apply {
-            put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
-            put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-            put(ContactsContract.CommonDataKinds.Phone.NUMBER, phoneNumber)
-            put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-        }
-        context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, phoneValues)
-
-        // Insertar foto si existe
-        if (photoUri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(photoUri)
-                val photoBytes = inputStream?.readBytes()
-                inputStream?.close()
-
-                if (photoBytes != null) {
-                    val photoValues = android.content.ContentValues().apply {
-                        put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
-                        put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Photo.CONTENT_ITEM_TYPE)
-                        put(ContactsContract.CommonDataKinds.Photo.PHOTO, photoBytes)
-                    }
-                    context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, photoValues)
-                }
-            } catch (e: Exception) {
-                Log.e("SaveContact", "Error guardando foto: ${e.message}", e)
-            }
-        }
-
-        Toast.makeText(context, "Contacto guardado", Toast.LENGTH_SHORT).show()
-        // Invalidar caché de contactos para que se recarguen
-        ContactsCache.invalidate()
-
+        val results = context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
+        rawContactId = results[0].uri?.lastPathSegment?.toLong() ?: return SaveContactResult.FAILED
     } catch (e: Exception) {
-        Toast.makeText(context, "Error guardando contacto: ${e.message}", Toast.LENGTH_LONG).show()
         Log.e("SaveContact", "Error: ${e.message}", e)
+        return SaveContactResult.FAILED
     }
+
+    // Invalidar caché de contactos para que se recarguen
+    ContactsCache.invalidate()
+
+    if (photoUri == null) return SaveContactResult.SAVED
+
+    // La foto va aparte: si falla, el contacto ya quedó guardado
+    return try {
+        val photoBytes = loadContactPhotoBytes(context, photoUri) ?: return SaveContactResult.SAVED_WITHOUT_PHOTO
+        val photoValues = android.content.ContentValues().apply {
+            put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
+            put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Photo.CONTENT_ITEM_TYPE)
+            put(ContactsContract.CommonDataKinds.Photo.PHOTO, photoBytes)
+        }
+        context.contentResolver.insert(ContactsContract.Data.CONTENT_URI, photoValues)
+            ?: return SaveContactResult.SAVED_WITHOUT_PHOTO
+        SaveContactResult.SAVED
+    } catch (e: Exception) {
+        Log.e("SaveContact", "Error guardando foto: ${e.message}", e)
+        SaveContactResult.SAVED_WITHOUT_PHOTO
+    }
+}
+
+// Lee la foto, la gira según la cámara (EXIF) y la reduce a máximo 720px en JPEG.
+// Las fotos de cámara pesan varios MB y el sistema de contactos rechaza fotos tan grandes.
+fun loadContactPhotoBytes(context: Context, photoUri: Uri, maxSize: Int = 720): ByteArray? {
+    val resolver = context.contentResolver
+
+    // 1. Leer solo las dimensiones
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(photoUri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    // 2. Decodificar en tamaño reducido para no gastar memoria
+    var sampleSize = 1
+    while (bounds.outWidth / (sampleSize * 2) >= maxSize && bounds.outHeight / (sampleSize * 2) >= maxSize) {
+        sampleSize *= 2
+    }
+    val decodeOptions = android.graphics.BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    val decoded = resolver.openInputStream(photoUri)?.use {
+        android.graphics.BitmapFactory.decodeStream(it, null, decodeOptions)
+    } ?: return null
+
+    // 3. Rotación según la orientación guardada por la cámara
+    val rotation = try {
+        resolver.openInputStream(photoUri)?.use {
+            when (android.media.ExifInterface(it).getAttributeInt(
+                android.media.ExifInterface.TAG_ORIENTATION,
+                android.media.ExifInterface.ORIENTATION_NORMAL
+            )) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+        } ?: 0f
+    } catch (e: Exception) {
+        0f
+    }
+
+    // 4. Escalar al tamaño final y girar
+    val scale = minOf(1f, maxSize.toFloat() / maxOf(decoded.width, decoded.height))
+    val matrix = android.graphics.Matrix().apply {
+        postScale(scale, scale)
+        postRotate(rotation)
+    }
+    val finalBitmap = android.graphics.Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+
+    val output = java.io.ByteArrayOutputStream()
+    finalBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, output)
+    if (finalBitmap !== decoded) finalBitmap.recycle()
+    decoded.recycle()
+    return output.toByteArray()
 }
 
 fun getContactNameFromNumber(context: Context, phoneNumber: String): String? {
@@ -3117,8 +3331,14 @@ fun MissedCallPanelItem(
     }
 }
 
-// Cache para información de contactos - evita consultas repetidas
-private val contactInfoCache = mutableMapOf<String, Pair<String?, String?>>()
+// Cache para información de contactos - evita consultas repetidas.
+// Se usa desde varios hilos (IO), por eso es ConcurrentHashMap.
+// Se limpia cuando cambian los contactos del teléfono (ver NoyaViewModel).
+private val contactInfoCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String?, String?>>()
+
+fun clearContactInfoCache() {
+    contactInfoCache.clear()
+}
 
 fun getContactInfoBatch(context: Context, phoneNumbers: Set<String>): Map<String, Pair<String?, String?>> {
     val result = mutableMapOf<String, Pair<String?, String?>>()

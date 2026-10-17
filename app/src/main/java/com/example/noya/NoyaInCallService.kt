@@ -42,12 +42,11 @@ class NoyaInCallService : InCallService() {
         Log.d("NoyaInCallService", "Estado: $callState (${call.state})")
         Log.d("NoyaInCallService", "========================================")
 
-        // Limpiar estado de llamadas anteriores antes de asignar la nueva
+        // Limpiar estado de llamadas anteriores antes de agregar la nueva
         IncomingCallState.callEnded.value = false
 
-        // Notificar que hay una llamada activa (thread-safe)
-        CallManager.ongoingCall = call
-        CallManager.setCallState(call.state)
+        // Registrar la llamada (puede haber más de una: llamada en espera)
+        CallManager.addCall(call)
 
         // Si es una llamada entrante (ringing), mostrar la UI
         if (call.state == Call.STATE_RINGING) {
@@ -80,12 +79,16 @@ class NoyaInCallService : InCallService() {
             override fun onStateChanged(call: Call, state: Int) {
                 val stateString = getStateString(state)
                 Log.d("NoyaInCallService", "Cambio de estado: $stateString ($state)")
-                CallManager.setCallState(state)
 
                 if (state == Call.STATE_DISCONNECTED) {
                     Log.d("NoyaInCallService", "Llamada DESCONECTADA - limpiando estado")
-                    CallManager.ongoingCall = null
-                    IncomingCallState.callEnded.value = true
+                    CallManager.removeCall(call)
+                    // Solo regresar a home cuando ya no queda ninguna llamada
+                    if (CallManager.callCount() == 0) {
+                        IncomingCallState.callEnded.value = true
+                    }
+                } else {
+                    CallManager.updateState()
                 }
             }
         })
@@ -96,9 +99,10 @@ class NoyaInCallService : InCallService() {
         Log.d("NoyaInCallService", "========================================")
         Log.d("NoyaInCallService", "LLAMADA REMOVIDA")
         Log.d("NoyaInCallService", "========================================")
-        CallManager.ongoingCall = null
-        CallManager.setCallState(Call.STATE_DISCONNECTED)
-        IncomingCallState.callEnded.value = true
+        CallManager.removeCall(call)
+        if (CallManager.callCount() == 0) {
+            IncomingCallState.callEnded.value = true
+        }
     }
 
     private fun getStateString(state: Int): String {
@@ -116,30 +120,85 @@ class NoyaInCallService : InCallService() {
     }
 }
 
+// Maneja todas las llamadas en curso. Puede haber más de una cuando entra
+// una segunda llamada mientras se habla (llamada en espera).
+// Los callbacks de InCallService llegan en el hilo principal, igual que la UI.
 object CallManager {
-    @Volatile
-    var ongoingCall: Call? = null
+    private val calls = mutableListOf<Call>()
 
     @Volatile
     var inCallService: NoyaInCallService? = null
 
+    // Estado de la llamada principal (la que suena, o si no, la activa)
     private val _callState = MutableStateFlow(Call.STATE_DISCONNECTED)
     val callState: StateFlow<Int> = _callState.asStateFlow()
 
-    fun setCallState(state: Int) {
-        _callState.value = state
+    // Número de la llamada con la que se está hablando
+    private val _activeCallNumber = MutableStateFlow<String?>(null)
+    val activeCallNumber: StateFlow<String?> = _activeCallNumber.asStateFlow()
+
+    // Llamada activa si existe, si no la que está sonando
+    val ongoingCall: Call?
+        get() = activeCall() ?: ringingCall()
+
+    fun ringingCall(): Call? = calls.firstOrNull { it.state == Call.STATE_RINGING }
+
+    // Llamada con la que se habla: activa, luego marcando/conectando, luego en espera
+    fun activeCall(): Call? =
+        calls.firstOrNull { it.state == Call.STATE_ACTIVE }
+            ?: calls.firstOrNull {
+                it.state == Call.STATE_DIALING ||
+                    it.state == Call.STATE_CONNECTING ||
+                    it.state == Call.STATE_NEW
+            }
+            ?: calls.firstOrNull { it.state == Call.STATE_HOLDING }
+
+    fun callCount(): Int = calls.size
+
+    fun addCall(call: Call) {
+        if (call !in calls) calls.add(call)
+        updateState()
+    }
+
+    fun removeCall(call: Call) {
+        calls.remove(call)
+        resumeHeldCall()
+        updateState()
+    }
+
+    fun updateState() {
+        val primary = ringingCall() ?: activeCall()
+        _callState.value = primary?.state ?: Call.STATE_DISCONNECTED
+        _activeCallNumber.value = activeCall()?.details?.handle?.schemeSpecificPart
+    }
+
+    // Si terminó la llamada activa y queda una en espera, reanudarla
+    // para que no se quede en silencio
+    private fun resumeHeldCall() {
+        if (ringingCall() != null) return
+        val hasActive = calls.any {
+            it.state == Call.STATE_ACTIVE ||
+                it.state == Call.STATE_DIALING ||
+                it.state == Call.STATE_CONNECTING
+        }
+        if (!hasActive) {
+            calls.firstOrNull { it.state == Call.STATE_HOLDING }?.let {
+                Log.d("CallManager", "Reanudando llamada en espera")
+                it.unhold()
+            }
+        }
     }
 
     fun endCall() {
-        ongoingCall?.disconnect()
+        activeCall()?.disconnect()
     }
 
     fun answerCall() {
-        ongoingCall?.answer(0) // 0 = video state (audio only)
+        ringingCall()?.answer(0) // 0 = video state (audio only)
     }
 
     fun rejectCall() {
-        ongoingCall?.reject(false, null)
+        ringingCall()?.reject(false, null)
     }
 
     fun setSpeaker(enabled: Boolean) {
