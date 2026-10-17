@@ -22,6 +22,7 @@ class NoyaInCallService : InCallService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        IncomingCallNotification.cancel(this)
         CallManager.inCallService = null
         Log.d("NoyaInCallService", "Servicio destruido")
     }
@@ -60,6 +61,10 @@ class NoyaInCallService : InCallService() {
                 "noya:incomingCall"
             )
             wakeLock.acquire(10_000L) // 10 segundos máximo
+
+            // Red de seguridad: si el teléfono no deja abrir la pantalla directamente,
+            // la notificación de llamada la abre o muestra botones para contestar
+            IncomingCallNotification.show(this, callerNumber)
 
             // Lanzar la actividad principal para mostrar la llamada entrante
             val intent = Intent(this, MainActivity::class.java).apply {
@@ -170,6 +175,12 @@ object CallManager {
         val primary = ringingCall() ?: activeCall()
         _callState.value = primary?.state ?: Call.STATE_DISCONNECTED
         _activeCallNumber.value = activeCall()?.details?.handle?.schemeSpecificPart
+
+        // Quitar la notificación de llamada entrante cuando ya no suena
+        // (se contestó, se rechazó o colgaron)
+        if (ringingCall() == null) {
+            inCallService?.let { IncomingCallNotification.cancel(it) }
+        }
     }
 
     // Si terminó la llamada activa y queda una en espera, reanudarla

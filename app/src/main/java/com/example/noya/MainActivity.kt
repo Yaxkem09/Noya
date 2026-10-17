@@ -299,6 +299,8 @@ object ResponsiveDimens {
 object IncomingCallState {
     val incomingCallNumber = mutableStateOf<String?>(null)
     val callEnded = mutableStateOf(false)
+    // Se pidió contestar desde la notificación
+    val answerRequested = mutableStateOf(false)
 }
 
 object ScreenNavigationState {
@@ -705,9 +707,15 @@ class MainActivity : ComponentActivity() {
                 // Limpiar callEnded de llamadas anteriores ANTES de notificar la nueva
                 IncomingCallState.callEnded.value = false
                 IncomingCallState.incomingCallNumber.value = callerNumber
+                // Se tocó "Contestar" en la notificación
+                if (it.getBooleanExtra(IncomingCallNotification.EXTRA_ANSWER_CALL, false)) {
+                    Log.d("MainActivity", "Contestar desde la notificación")
+                    IncomingCallState.answerRequested.value = true
+                }
                 // Limpiar el intent
                 it.removeExtra("INCOMING_CALL")
                 it.removeExtra("CALLER_NUMBER")
+                it.removeExtra(IncomingCallNotification.EXTRA_ANSWER_CALL)
             }
         }
     }
@@ -904,13 +912,38 @@ private fun MainScreenContent() {
     // en curso, volver a su pantalla; si no, regresar a home
     val returnAfterIncomingCall = {
         IncomingCallState.incomingCallNumber.value = null
-        if (CallManager.activeCall() != null && activeCallContact != null) {
-            Log.d("MainScreen", "Sigue otra llamada en curso - volviendo a la pantalla de llamada")
+        if (CallManager.activeCall() != null) {
+            // Sigue otra llamada, o se contestó por otro lado (audífonos, notificación)
+            Log.d("MainScreen", "Hay una llamada en curso - mostrando la pantalla de llamada")
+            if (activeCallContact == null) {
+                val number = CallManager.activeCallNumber.value ?: "Desconocido"
+                activeCallContact = Contact("incoming", number, number)
+            }
             currentScreen = "activeCall"
         } else {
             currentScreen = "home"
             activeCallContact = null
             viewModel.refreshMissedCalls()
+        }
+    }
+
+    val acceptIncomingCall = {
+        CallManager.answerCall()
+        val contact = Contact("incoming", incomingCallerNumber ?: "Desconocido", incomingCallerNumber ?: "")
+        activeCallContact = contact
+        IncomingCallState.incomingCallNumber.value = null
+        currentScreen = "activeCall"
+    }
+
+    // Contestar desde la notificación de llamada entrante
+    val answerRequested by IncomingCallState.answerRequested
+    LaunchedEffect(answerRequested) {
+        if (answerRequested) {
+            IncomingCallState.answerRequested.value = false
+            if (CallManager.ringingCall() != null) {
+                Log.d("MainScreen", "Contestando llamada desde la notificación")
+                acceptIncomingCall()
+            }
         }
     }
 
@@ -942,13 +975,7 @@ private fun MainScreenContent() {
         )
         "incomingCall" -> IncomingCallScreen(
             callerNumber = incomingCallerNumber ?: "Desconocido",
-            onAccept = {
-                CallManager.answerCall()
-                val contact = Contact("incoming", incomingCallerNumber ?: "Desconocido", incomingCallerNumber ?: "")
-                activeCallContact = contact
-                IncomingCallState.incomingCallNumber.value = null
-                currentScreen = "activeCall"
-            },
+            onAccept = acceptIncomingCall,
             onReject = {
                 CallManager.rejectCall()
                 returnAfterIncomingCall()
@@ -994,8 +1021,11 @@ fun HomeScreen(
     val missedCallsPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val readGranted = permissions[Manifest.permission.READ_CALL_LOG] ?: false
-        val callGranted = permissions[Manifest.permission.CALL_PHONE] ?: false
+        // Solo se piden los permisos que faltan: los que ya estaban dados no vienen en el resultado
+        fun granted(permission: String) = permissions[permission]
+            ?: (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED)
+        val readGranted = granted(Manifest.permission.READ_CALL_LOG)
+        val callGranted = granted(Manifest.permission.CALL_PHONE)
 
         if (readGranted) {
             viewModel.loadMissedCalls(true)
@@ -1009,27 +1039,27 @@ fun HomeScreen(
         }
     }
 
-    // Cargar llamadas perdidas al iniciar
+    // Cargar llamadas perdidas al iniciar y pedir los permisos que falten
+    // (incluye notificaciones, para la notificación de llamada entrante)
     LaunchedEffect(Unit) {
-        val readGranted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_CALL_LOG
-        ) == PackageManager.PERMISSION_GRANTED
-        val callGranted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CALL_PHONE
-        ) == PackageManager.PERMISSION_GRANTED
+        fun isGranted(permission: String) =
+            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-        if (readGranted && callGranted) {
+        val neededPermissions = mutableListOf(
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.CALL_PHONE
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            neededPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val missingPermissions = neededPermissions.filterNot { isGranted(it) }
+
+        if (isGranted(Manifest.permission.READ_CALL_LOG) && isGranted(Manifest.permission.CALL_PHONE)) {
             viewModel.loadMissedCalls(true)
             viewModel.startMissedCallsUpdates()
-        } else {
-            missedCallsPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.READ_CALL_LOG,
-                    Manifest.permission.CALL_PHONE
-                )
-            )
+        }
+        if (missingPermissions.isNotEmpty()) {
+            missedCallsPermissionLauncher.launch(missingPermissions.toTypedArray())
         }
     }
 
@@ -1366,7 +1396,8 @@ fun ContactsScreen(
                     BoxWithConstraints(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        val availableHeight = this.maxHeight - 100.dp // Espacio para botones de navegación
+                        // Espacio para botones de navegación e indicador de página
+                        val availableHeight = this.maxHeight - 100.dp - (mediumTextSize * 1.5f + mediumPadding.value).dp
                         val spacingValue = mediumPadding.value
                         val itemTotalHeight = cardHeightValue + spacingValue
 
@@ -1406,6 +1437,18 @@ fun ContactsScreen(
                                     )
                                 }
                             }
+
+                            // Indicador de página
+                            Text(
+                                text = "Página ${currentPage + 1} de $totalPages",
+                                fontSize = mediumTextSize.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2C3E50),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = mediumPadding)
+                            )
 
                             // Botones de navegación (adelante/atrás)
                             Row(
