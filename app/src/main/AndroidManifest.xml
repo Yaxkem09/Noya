@@ -17,6 +17,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Alarma exacta para devolver el sonido después de 2 horas en silencio -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
@@ -74,6 +78,10 @@
                 <action android:name="android.telecom.InCallService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".SilentModeRestoreReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -47,7 +47,7 @@ import androidx.compose.material.icons.filled.Battery5Bar
 import androidx.compose.material.icons.filled.Battery6Bar
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CallMissed
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
@@ -105,6 +105,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -379,10 +380,31 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // BroadcastReceiver para detectar cambios de modo de sonido (incluye botones de volumen)
+    private val ringerModeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.RINGER_MODE_CHANGED_ACTION) {
+                syncSilentMode()
+            }
+        }
+    }
+
     init {
         startTimeUpdates()
         startBatteryUpdates()
         registerBatteryReceiver()
+        registerRingerModeReceiver()
+        syncSilentMode()
+    }
+
+    // Registrar receiver para cambios de modo de sonido
+    private fun registerRingerModeReceiver() {
+        val filter = IntentFilter(AudioManager.RINGER_MODE_CHANGED_ACTION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getApplication<Application>().registerReceiver(ringerModeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            getApplication<Application>().registerReceiver(ringerModeReceiver, filter)
+        }
     }
 
     // Registrar receiver para eventos de carga
@@ -403,6 +425,11 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         // Desregistrar receiver para evitar memory leaks
         try {
             getApplication<Application>().unregisterReceiver(batteryReceiver)
+        } catch (e: Exception) {
+            // Ignorar si ya fue desregistrado
+        }
+        try {
+            getApplication<Application>().unregisterReceiver(ringerModeReceiver)
         } catch (e: Exception) {
             // Ignorar si ya fue desregistrado
         }
@@ -501,9 +528,19 @@ class NoyaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Actualizar modo silencio
-    fun updateSilentMode(isSilent: Boolean) {
+    // Leer el modo de sonido real del teléfono (vibración cuenta como silencio)
+    // y programar/cancelar la restauración automática del sonido
+    fun syncSilentMode() {
+        val app = getApplication<Application>()
+        val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val isSilent = audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL
         _isSilentMode.value = isSilent
+
+        if (isSilent) {
+            SilentModeTimer.ensureScheduled(app)
+        } else {
+            SilentModeTimer.cancel(app)
+        }
     }
 
     // Actualizar batería manualmente
@@ -1007,8 +1044,8 @@ fun HomeScreen(
                 text = if (isSilentMode) "Sonido" else "Silenciar",
                 imageRes = if (isSilentMode) R.drawable.ic_btn_sonido else R.drawable.ic_btn_silenciar,
                 onClick = {
-                    toggleSilentMode(context) { newMode ->
-                        viewModel.updateSilentMode(newMode)
+                    toggleSilentMode(context) {
+                        viewModel.syncSilentMode()
                     }
                 },
                 backgroundColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2),
@@ -1860,7 +1897,7 @@ fun ActiveCallScreen(contact: Contact, onEndCall: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Call,
+                    imageVector = Icons.Filled.CallEnd,
                     contentDescription = "Colgar",
                     modifier = Modifier.size(largeIconSize)
                 )
@@ -2081,7 +2118,7 @@ fun IncomingCallScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Call,
+                    imageVector = Icons.Filled.CallEnd,
                     contentDescription = "Rechazar",
                     modifier = Modifier.size(largeIconSize)
                 )
@@ -2711,7 +2748,7 @@ fun toggleSilentMode(context: Context, onModeChanged: (Boolean) -> Unit) {
         AudioManager.RINGER_MODE_NORMAL -> {
             audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
             onModeChanged(true)
-            Toast.makeText(context, "Modo silencio activado", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Modo silencio activado. El sonido volverá en 2 horas", Toast.LENGTH_LONG).show()
         }
         else -> {
             audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
@@ -3674,59 +3711,93 @@ fun AdvancedOptionsScreen(
                     )
                 }
 
-                Text(
-                    text = "Brillo de pantalla: ${(currentBrightness / 255 * 100).toInt()}%",
-                    fontSize = smallTextSize.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF2C3E50)
-                )
-                Spacer(modifier = Modifier.height(mediumPadding))
-                Slider(
-                    value = currentBrightness,
-                    onValueChange = { newBrightness ->
-                        currentBrightness = newBrightness
-                        try {
-                            if (Settings.System.canWrite(context)) {
-                                Settings.System.putInt(
-                                    context.contentResolver,
-                                    Settings.System.SCREEN_BRIGHTNESS_MODE,
-                                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
-                                )
+                // Permiso para cambiar el brillo (se vuelve a revisar al regresar de Ajustes)
+                var canWriteSettings by remember { mutableStateOf(Settings.System.canWrite(context)) }
+                var manualModeSet by remember { mutableStateOf(false) }
+                LifecycleResumeEffect(Unit) {
+                    canWriteSettings = Settings.System.canWrite(context)
+                    onPauseOrDispose { }
+                }
+
+                if (!canWriteSettings) {
+                    // Sin permiso: un botón que abre Ajustes una sola vez
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
+                                intent.data = Uri.parse("package:${context.packageName}")
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Log.e("AdvancedOptions", "Error abriendo permiso de brillo: ${e.message}", e)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(extraSmallButtonHeight),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFF39C12),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text(
+                            text = "Dar permiso para cambiar brillo",
+                            fontSize = smallTextSize.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Brillo de pantalla: ${(currentBrightness / 255 * 100).toInt()}%",
+                        fontSize = smallTextSize.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF2C3E50)
+                    )
+                    Spacer(modifier = Modifier.height(mediumPadding))
+                    Slider(
+                        value = currentBrightness,
+                        onValueChange = { newBrightness ->
+                            currentBrightness = newBrightness
+                            try {
+                                // Poner el brillo en modo manual solo una vez
+                                if (!manualModeSet) {
+                                    Settings.System.putInt(
+                                        context.contentResolver,
+                                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                                    )
+                                    manualModeSet = true
+                                }
                                 Settings.System.putInt(
                                     context.contentResolver,
                                     Settings.System.SCREEN_BRIGHTNESS,
                                     newBrightness.toInt()
                                 )
-                            } else {
-                                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
-                                intent.data = Uri.parse("package:${context.packageName}")
-                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Log.e("AdvancedOptions", "Error al cambiar brillo: ${e.message}", e)
                             }
-                        } catch (e: Exception) {
-                            Log.e("AdvancedOptions", "Error al cambiar brillo: ${e.message}", e)
-                        }
-                    },
-                    valueRange = 1f..255f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFFF39C12),
-                        activeTrackColor = Color(0xFFF39C12),
-                        inactiveTrackColor = Color(0xFFE8E8E8)
+                        },
+                        valueRange = 1f..255f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFFF39C12),
+                            activeTrackColor = Color(0xFFF39C12),
+                            inactiveTrackColor = Color(0xFFE8E8E8)
+                        )
                     )
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Oscuro",
-                        fontSize = (12 * scaleFactor).sp,
-                        color = Color(0xFF85929E)
-                    )
-                    Text(
-                        text = "Brillante",
-                        fontSize = (12 * scaleFactor).sp,
-                        color = Color(0xFF85929E)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Oscuro",
+                            fontSize = (12 * scaleFactor).sp,
+                            color = Color(0xFF85929E)
+                        )
+                        Text(
+                            text = "Brillante",
+                            fontSize = (12 * scaleFactor).sp,
+                            color = Color(0xFF85929E)
+                        )
+                    }
                 }
             }
         }
