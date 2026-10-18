@@ -370,7 +370,8 @@ private fun MainScreenContent() {
         )
         "advancedOptions" -> AdvancedOptionsScreen(
             onNavigateBack = { currentScreen = "home" },
-            onNavigateToNewContact = { currentScreen = "newContact" }
+            onNavigateToNewContact = { currentScreen = "newContact" },
+            viewModel = viewModel
         )
         "incomingCall" -> IncomingCallScreen(
             callerNumber = incomingCallerNumber ?: "Desconocido",

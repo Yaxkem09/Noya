@@ -22,16 +22,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.noya.AppSettings
+import com.example.noya.NoyaViewModel
+import com.example.noya.device.toggleSilentMode
 import com.example.noya.ui.ResponsiveDimens
 import com.example.noya.ui.components.LargeAccessibleButton
 
 @Composable
 fun AdvancedOptionsScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToNewContact: () -> Unit
+    onNavigateToNewContact: () -> Unit,
+    viewModel: NoyaViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val isSilentMode by viewModel.isSilentMode.collectAsStateWithLifecycle()
 
     // Dimensiones responsivas
     val screenPadding = ResponsiveDimens.current.screenPadding
@@ -92,6 +98,30 @@ fun AdvancedOptionsScreen(
             customIconSize = smallIconSize,
             customTextSize = smallTextSize
         )
+
+        Spacer(modifier = Modifier.height(largePadding))
+
+        // Botón Silenciar / Activar sonido
+        Button(
+            onClick = {
+                toggleSilentMode(context) {
+                    viewModel.syncSilentMode()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(extraSmallButtonHeight),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2),
+                contentColor = Color.White
+            )
+        ) {
+            Text(
+                text = if (isSilentMode) "Activar sonido" else "Silenciar",
+                fontSize = smallTextSize.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
         Spacer(modifier = Modifier.height(largePadding))
 

@@ -8,6 +8,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,7 +52,6 @@ import com.example.noya.NoyaViewModel
 import com.example.noya.R
 import com.example.noya.data.CallLog
 import com.example.noya.data.Contact
-import com.example.noya.device.toggleSilentMode
 import com.example.noya.ui.ResponsiveDimens
 import com.example.noya.ui.components.GridImageButton
 import kotlinx.coroutines.delay
@@ -69,7 +70,6 @@ fun HomeScreen(
     val currentTime by viewModel.currentTime.collectAsStateWithLifecycle()
     val currentDate by viewModel.currentDate.collectAsStateWithLifecycle()
     val batteryStatus by viewModel.batteryStatus.collectAsStateWithLifecycle()
-    val isSilentMode by viewModel.isSilentMode.collectAsStateWithLifecycle()
     val missedCalls by viewModel.missedCalls.collectAsStateWithLifecycle()
 
     // Estados locales de UI
@@ -191,30 +191,16 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(mediumPadding))
 
-        // Botones principales - solo Llamar y Silenciar
+        // Botón principal - Llamar (centrado)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(mediumPadding)
+            horizontalArrangement = Arrangement.Center
         ) {
-            // Botón Llamar
             GridImageButton(
                 text = "Llamar",
                 imageRes = R.drawable.ic_btn_llamar,
                 onClick = { onNavigateToContacts() },
-                modifier = Modifier.weight(1f)
-            )
-
-            // Botón Modo Silencio
-            GridImageButton(
-                text = if (isSilentMode) "Sonido" else "Silenciar",
-                imageRes = if (isSilentMode) R.drawable.ic_btn_sonido else R.drawable.ic_btn_silenciar,
-                onClick = {
-                    toggleSilentMode(context) {
-                        viewModel.syncSilentMode()
-                    }
-                },
-                backgroundColor = if (isSilentMode) Color(0xFFE67E22) else Color(0xFF5DADE2),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth(0.5f)
             )
         }
 
@@ -228,12 +214,12 @@ fun HomeScreen(
         )
         }
 
-        // Botón de opciones avanzadas en la esquina superior izquierda
+        // Botón de opciones avanzadas en la parte superior, centrado
         Box(
             modifier = Modifier
-                .padding(top = smallPadding, start = smallPadding)
+                .padding(top = smallPadding)
                 .size(settingsButtonSize)
-                .align(Alignment.TopStart)
+                .align(Alignment.TopCenter)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
@@ -254,9 +240,12 @@ fun HomeScreen(
                 )
             }
 
-            // Botón
+            // Botón con borde para resaltar
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp)
+                    .border(2.dp, Color(0xFF2C3E50), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
