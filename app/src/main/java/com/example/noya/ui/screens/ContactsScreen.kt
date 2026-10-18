@@ -130,6 +130,40 @@ fun ContactsScreen(
             .fillMaxSize()
             .padding(screenPadding)
     ) {
+        // Botón de regresar al menú principal
+        val smallPadding = ResponsiveDimens.current.smallPadding
+        val smallIconSize = ResponsiveDimens.current.smallIconSize
+        val smallTextSize = ResponsiveDimens.current.smallTextSize
+        Button(
+            onClick = onNavigateBack,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ResponsiveDimens.current.extraSmallButtonHeight),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF85929E),
+                contentColor = Color.White
+            )
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Regresar",
+                    modifier = Modifier.size(smallIconSize)
+                )
+                Spacer(modifier = Modifier.width(smallPadding))
+                Text(
+                    text = "Regresar",
+                    fontSize = smallTextSize.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(mediumPadding))
+
         // Contenido de contactos (sin título)
         if (hasPermission) {
             when {
@@ -316,13 +350,6 @@ fun ContactsScreen(
                         )
                     },
                     backgroundColor = Color(0xFF58D68D)
-                )
-                Spacer(modifier = Modifier.height(mediumPadding))
-                LargeAccessibleButton(
-                    text = "Regresar",
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    onClick = onNavigateBack,
-                    backgroundColor = Color(0xFF85929E)
                 )
             }
         }
